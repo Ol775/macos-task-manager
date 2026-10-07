@@ -9,67 +9,56 @@ struct TaskManagerApp: App {
                 .environmentObject(monitor)
                 .onAppear { monitor.start() }
         }
-        .defaultSize(width: 1000, height: 660)
+        .defaultSize(width: 1020, height: 680)
+        .windowToolbarStyle(.unified)
     }
 }
 
-enum Page { case processes, performance }
-enum Resource { case cpu, memory, gpu }
+enum Item: Hashable { case processes, cpu, memory, gpu }
 
 enum Palette {
-    static let cpu = Color(red: 0.07, green: 0.49, blue: 0.73)
-    static let memory = Color(red: 0.55, green: 0.07, blue: 0.68)
-    static let gpu = Color(red: 0.00, green: 0.62, blue: 0.62)
-
-    /// Windows-style usage heat: pale yellow to deep orange.
-    static func heat(_ v: Double) -> Color {
-        let v = min(max(v, 0), 1)
-        return Color(red: 1, green: 0.80 - 0.42 * v, blue: 0.20 - 0.10 * v).opacity(0.10 + 0.60 * v)
-    }
+    static let cpu = Color.blue
+    static let memory = Color.purple
+    static let gpu = Color.orange
 }
 
 struct ContentView: View {
-    @State private var page = Page.processes
+    @EnvironmentObject var m: Monitor
+    @State private var item: Item? = .processes
 
     var body: some View {
-        HStack(spacing: 0) {
-            NavRail(page: $page)
-            Divider()
-            switch page {
+        NavigationSplitView {
+            List(selection: $item) {
+                Label("Processes", systemImage: "list.bullet.rectangle")
+                    .tag(Item.processes)
+                Section("Performance") {
+                    tile(.cpu, "CPU", Palette.cpu, m.cpuHistory)
+                    tile(.memory, "Memory", Palette.memory, m.memHistory)
+                    if m.gpuAvailable { tile(.gpu, "GPU", Palette.gpu, m.gpuHistory) }
+                }
+            }
+            .navigationSplitViewColumnWidth(min: 210, ideal: 240, max: 300)
+        } detail: {
+            switch item ?? .processes {
             case .processes: ProcessesView()
-            case .performance: PerformanceView()
+            case .cpu: CPUDetail()
+            case .memory: MemoryDetail()
+            case .gpu: GPUDetail()
             }
         }
-        .frame(minWidth: 860, minHeight: 540)
-        .background(Color(nsColor: .windowBackgroundColor))
-    }
-}
-
-struct NavRail: View {
-    @Binding var page: Page
-    var body: some View {
-        VStack(spacing: 4) {
-            item(.processes, "list.bullet", "Processes")
-            item(.performance, "chart.xyaxis.line", "Performance")
-            Spacer()
-        }
-        .padding(.top, 10).padding(.horizontal, 6)
-        .frame(width: 54)
-        .background(Color(nsColor: .controlBackgroundColor))
+        .frame(minWidth: 780, minHeight: 500)
     }
 
-    private func item(_ p: Page, _ icon: String, _ help: String) -> some View {
-        Button { page = p } label: {
-            Image(systemName: icon).font(.system(size: 16))
-                .frame(width: 42, height: 40)
-                .background(page == p ? Color.primary.opacity(0.09) : .clear, in: RoundedRectangle(cornerRadius: 6))
-                .overlay(alignment: .leading) {
-                    if page == p {
-                        Capsule().fill(Color.accentColor).frame(width: 3, height: 16).offset(x: -2)
-                    }
-                }
-                .contentShape(Rectangle())
+    private func tile(_ i: Item, _ title: String, _ color: Color, _ data: [Double]) -> some View {
+        HStack(spacing: 10) {
+            Sparkline(data: data, color: color).frame(width: 52, height: 32)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(title).font(.system(size: 13, weight: .medium))
+                Text(String(format: "%.0f%%", data.last ?? 0))
+                    .font(.system(size: 11.5)).monospacedDigit().foregroundStyle(.secondary)
+            }
         }
-        .buttonStyle(.plain).help(help)
+        .padding(.vertical, 3)
+        .tag(i)
     }
 }
