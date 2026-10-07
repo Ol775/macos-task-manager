@@ -9,7 +9,7 @@
 ![Apple silicon and Intel](https://img.shields.io/badge/arm64%20%7C%20x86__64-universal-0a84ff)
 ![Swift 6](https://img.shields.io/badge/Swift-SwiftUI-0a84ff)
 
-**Task Manager** is a free, open-source Mac app that works like the Windows Task Manager: a sortable process list with **End Task**, live **CPU, memory, GPU, disk and network** graphs, and a system overview. It is written in Swift and SwiftUI with no third-party dependencies, runs natively on Apple silicon and Intel, and has Light, Dark and OLED Black themes. Current version: <!--v-->v0.4.2<!--/v-->.
+**Task Manager** is a free, open-source Mac app that works like the Windows Task Manager: a sortable process list with **End Task**, live **CPU, memory, GPU, disk and network** graphs, and a system overview. It is written in Swift and SwiftUI with no third-party dependencies, runs natively on Apple silicon and Intel, and has Light, Dark and OLED Black themes. Current version: <!--v-->v0.4.3<!--/v-->.
 
 ## Features
 

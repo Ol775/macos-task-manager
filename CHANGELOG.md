@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.4.3 (2026-10-07)
+- **Lighter on your Mac.** Memory use is about halved (roughly 50 MB instead of 100 MB) and CPU use is down by about a third. Graphs are now plain SwiftUI shapes (the GPU renderer they used cost about 45 MB), the app no longer redraws its whole window every second, unchanged process rows are skipped, Apps mode samples only the apps, and All Processes refreshes every 2 seconds.
+
 ## 0.4.2 (2026-10-07)
 - **Faster and friendlier.** Idle CPU use is about a third of what it was (graphs are drawn directly instead of with Swift Charts, process names and icons are looked up once, and a hidden or minimized window no longer redraws); the Processes page now says when macOS protects some processes, shows a message when a search finds nothing, says "1 process" correctly, and clears the selection when a process ends; End Task shows the PID and path; ad hoc signatures no longer get a green seal; the graph caption no longer overlaps the line.
 

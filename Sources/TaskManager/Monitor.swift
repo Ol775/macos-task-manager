@@ -88,6 +88,7 @@ final class Monitor: ObservableObject {
     private struct Identity { let started: UInt64; let isApp: Bool; let icon: NSImage?; let name: String }
     private var identities: [Int32: Identity] = [:]
     private var gpuInfoRead = false
+    private var lastProcSample: UInt64 = 0
     private var lastDisk: (r: UInt64, w: UInt64)?
     private var lastNet: [String: (rx: UInt32, tx: UInt32)] = [:]
     private var lastSystemTime = DispatchTime.now().uptimeNanoseconds
@@ -105,8 +106,17 @@ final class Monitor: ObservableObject {
         var t = mach_timebase_info_data_t(); mach_timebase_info(&t); return t
     }()
 
+    private func refreshAppPIDs() {
+        appPIDs = Set(NSWorkspace.shared.runningApplications.filter { $0.activationPolicy == .regular }.map(\.processIdentifier))
+    }
+
     func start(interval: Double) {
         guard timer == nil else { return }
+        refreshAppPIDs()
+        let nc = NSWorkspace.shared.notificationCenter
+        for name in [NSWorkspace.didLaunchApplicationNotification, NSWorkspace.didTerminateApplicationNotification] {
+            appObservers.append(nc.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in MainActor.assumeIsolated { self?.refreshAppPIDs() } })
+        }
         self.interval = interval
         tick()
         schedule()
@@ -131,6 +141,10 @@ final class Monitor: ObservableObject {
     private var windowVisible: Bool { NSApp.windows.contains { $0.isVisible && !$0.isMiniaturized && $0.occlusionState.contains(.visible) && $0.level == .normal } }
     var processWatchers = 0
     var popoverOpen = false
+    /// Apps mode only needs the dozen or so GUI apps, so only those are sampled; All Processes samples everything.
+    var allProcessesWanted = false
+    private var appPIDs = Set<Int32>()
+    private var appObservers: [NSObjectProtocol] = []
 
     /// Called after every sample (the menu bar item refreshes its text from this).
     var onTick: (() -> Void)?
@@ -143,7 +157,10 @@ final class Monitor: ObservableObject {
         memUsed = usedMemory()
         push(&memHistory, Double(memUsed) / Double(memTotal) * 100)
         push(&gpuHistory, sampleGPU())
-        if force || popoverOpen || (processWatchers > 0 && windowVisible) { procs = sampleProcesses() }
+        let sinceProcs = Double(DispatchTime.now().uptimeNanoseconds - lastProcSample) / 1e9
+        // All Processes is a few hundred rows that re-sort on every sample, so it refreshes every 2 s at most; Apps keeps the chosen rate.
+        let procsDue = !allProcessesWanted || sinceProcs >= 1.9
+        if force || popoverOpen || (processWatchers > 0 && windowVisible && procsDue) { lastProcSample = DispatchTime.now().uptimeNanoseconds; procs = sampleProcesses(force: force) }
         else { pidTotal = Int(max(proc_listallpids(nil, 0), 0)) }
         if force || popoverOpen || windowVisible { objectWillChange.send() }
         onTick?()
@@ -280,7 +297,16 @@ final class Monitor: ObservableObject {
         return (UInt64(vm.active_count) + UInt64(vm.wire_count) + UInt64(vm.compressor_page_count)) * UInt64(vm_kernel_page_size)
     }
 
-    private func sampleProcesses() -> [Proc] {
+    /// How many processes macOS lets this app inspect (used by the Permissions card when only apps are being sampled).
+    func countReadable() {
+        var pids = [Int32](repeating: 0, count: Int(proc_listallpids(nil, 0)) + 64)
+        let n = Int(proc_listallpids(&pids, Int32(pids.count * MemoryLayout<Int32>.size)))
+        var ti = proc_taskinfo(); let size = Int32(MemoryLayout<proc_taskinfo>.size)
+        pidTotal = max(n, 0)
+        pidReadable = pids.prefix(max(n, 0)).filter { $0 > 0 && proc_pidinfo($0, PROC_PIDTASKINFO, 0, &ti, size) == size }.count
+    }
+
+    private func sampleProcesses(force: Bool = false) -> [Proc] {
         let now = DispatchTime.now().uptimeNanoseconds
         let wall = Double(now - lastTime)
         lastTime = now
@@ -288,12 +314,14 @@ final class Monitor: ObservableObject {
         var seen = Set<Int32>()
         var pids = [Int32](repeating: 0, count: Int(proc_listallpids(nil, 0)) + 64)
         let n = Int(proc_listallpids(&pids, Int32(pids.count * MemoryLayout<Int32>.size)))
+        let everything = allProcessesWanted || force
+        if !everything { pids = Array(appPIDs); }
         var ns: [Int32: UInt64] = [:]
         var diskBytes: [Int32: UInt64] = [:]
         var out: [Proc] = []
         var nameBuf = [CChar](repeating: 0, count: 256)
 
-        for pid in pids.prefix(max(n, 0)) where pid > 0 {
+        for pid in (everything ? Array(pids.prefix(max(n, 0))) : pids) where pid > 0 {
             var ti = proc_taskinfo()
             let size = Int32(MemoryLayout<proc_taskinfo>.size)
             // Fails for other users' processes unless root; those are skipped.
@@ -330,7 +358,7 @@ final class Monitor: ObservableObject {
         lastProcDisk = diskBytes
         if identities.count > seen.count { identities = identities.filter { seen.contains($0.key) } }
         pidTotal = max(n, 0)
-        pidReadable = out.count
+        if everything { pidReadable = out.count }
         return out
     }
 

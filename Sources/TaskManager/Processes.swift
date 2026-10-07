@@ -259,7 +259,12 @@ struct ProcessesView: View {
                         ScrollViewReader { proxy in
                             ScrollView {
                                 LazyVStack(spacing: 0) {
-                                    ForEach(Array(rows.enumerated()), id: \.element.id) { i, p in row(p, striped: i % 2 == 1).id(p.id) }
+                                    ForEach(Array(rows.enumerated()), id: \.element.id) { i, p in
+                                        ProcRow(p: p, striped: i % 2 == 1, on: selection == p.id, columns: columns, memTotal: m.memTotal, settings: settings,
+                                                select: { selection = p.id }, showDetails: { selection = p.id; showDetails = true },
+                                                end: { selection = p.id; endTask(p) })
+                                            .equatable().id(p.id)
+                                    }
                                 }
                             }
                             // Keyboard: ↑ ↓ move the selection, Return shows details, Esc closes them.
@@ -279,8 +284,9 @@ struct ProcessesView: View {
             .overlay { RoundedRectangle(cornerRadius: settings.corners.radius, style: .continuous).stroke(settings.accent, lineWidth: 2).opacity(listFocused ? 1 : 0).allowsHitTesting(false) }.clipShape(RoundedRectangle(cornerRadius: settings.corners.radius, style: .continuous))
         }
         .padding(24).frame(maxHeight: .infinity, alignment: .top)
-        .onAppear { m.processWatchers += 1; m.refreshProcesses() }
-        .onDisappear { m.processWatchers -= 1 }
+        .onAppear { m.processWatchers += 1; m.allProcessesWanted = !settings.appsOnly; m.refreshProcesses() }
+        .onDisappear { m.processWatchers -= 1; m.allProcessesWanted = false }
+        .onChange(of: settings.appsOnly) { _, apps in m.allProcessesWanted = !apps; m.refreshProcesses() }
         .onChange(of: selected == nil) { _, gone in if gone { selection = nil } }      // the process ended: nothing is selected any more
         .inspector(isPresented: Binding(get: { showDetails && selected != nil }, set: { showDetails = $0 })) {
             if let p = selected { ProcessDetailsView(proc: p, close: { showDetails = false }).inspectorColumnWidth(min: 280, ideal: 320, max: 440) }
@@ -355,40 +361,65 @@ struct ProcessesView: View {
     private var chevron: some View {
         Image(systemName: ascending ? "chevron.up" : "chevron.down").font(.system(size: ts(8), weight: .bold))
     }
+}
 
-    private func row(_ p: Proc, striped: Bool) -> some View {
-        let on = selection == p.id
-        return HStack(spacing: 0) {
+/// One line of the process list. It is Equatable on what it displays, so SwiftUI skips rebuilding rows whose numbers didn't
+/// change since the last sample (most processes sit at 0.0 % almost all the time), which is most of the list's per-second cost.
+struct ProcRow: View, Equatable {
+    let p: Proc
+    let striped: Bool
+    let on: Bool
+    let columns: [ProcColumn]
+    let memTotal: UInt64
+    let accent: Color, cpuColor: Color, memoryColor: Color, diskColor: Color
+    let select: () -> Void
+    let showDetails: () -> Void
+    let end: () -> Void
+    private let stamp: String
+
+    init(p: Proc, striped: Bool, on: Bool, columns: [ProcColumn], memTotal: UInt64, settings: AppSettings,
+         select: @escaping () -> Void, showDetails: @escaping () -> Void, end: @escaping () -> Void) {
+        self.p = p; self.striped = striped; self.on = on; self.columns = columns; self.memTotal = memTotal
+        accent = settings.accent; cpuColor = settings.cpuColor; memoryColor = settings.memoryColor; diskColor = settings.diskColor
+        self.select = select; self.showDetails = showDetails; self.end = end
+        // Everything the row shows, as rounded as it is displayed.
+        stamp = "\(p.id)|\(p.name)|\(Int(p.cpu * 10))|\(p.mem / 1024)|\(Int(p.disk / 1000))|\(p.threads)|\(p.state)|\(striped)|\(on)|\(columns.map(\.rawValue))|\(settings.themeKey)|\(settings.cpuColor.hex)\(settings.memoryColor.hex)\(settings.diskColor.hex)"
+    }
+
+    static func == (a: ProcRow, b: ProcRow) -> Bool { a.stamp == b.stamp }
+
+    var body: some View {
+        HStack(spacing: 0) {
             HStack(spacing: 8) {
                 if let icon = p.icon { Image(nsImage: icon).resizable().frame(width: ts(20), height: ts(20)) }
                 else { Image(systemName: "gearshape.fill").frame(width: ts(20), height: ts(20)).foregroundStyle(.secondary) }
                 Text(p.name).lineLimit(1)
             }
             .padding(.leading, 12).frame(minWidth: ts(160), maxWidth: .infinity, alignment: .leading)
-            ForEach(columns) { c in cell(c, p) }
+            ForEach(columns) { c in cell(c) }
         }
         .font(.system(size: ts(13))).frame(height: ts(28))
-        .background(on ? settings.accent.opacity(0.20) : (striped ? Color.primary.opacity(0.04) : .clear))
-        .overlay(alignment: .leading) { if on { Rectangle().fill(settings.accent).frame(width: 3) } }
+        .background(on ? accent.opacity(0.20) : (striped ? Color.primary.opacity(0.04) : .clear))
+        .overlay(alignment: .leading) { if on { Rectangle().fill(accent).frame(width: 3) } }
         .contentShape(Rectangle())
-        .onTapGesture(count: 2) { selection = p.id; showDetails = true }
-        .onTapGesture { selection = p.id }
+        .onTapGesture(count: 2) { showDetails() }
+        .onTapGesture { select() }
         .contextMenu {
-            Button("Show Details") { selection = p.id; showDetails = true }
+            Button("Show Details") { showDetails() }
             Button("Reveal in Finder") { if let path = ProcInspector.path(p.id) { NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: path)]) } }
             Divider()
-            Button("End Task", role: .destructive) { endTask(p) }
+            Button("End Task", role: .destructive) { end() }
         }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(rowDescription(p))
+        .accessibilityLabel(rowDescription)
         .accessibilityAddTraits(on ? [.isButton, .isSelected] : .isButton)
-        .accessibilityAction { selection = p.id }
-        .accessibilityAction(named: "Show details") { selection = p.id; showDetails = true }
-        .accessibilityAction(named: "End task") { selection = p.id; endTask(p) }
+        .accessibilityAction { select() }
+        .accessibilityAction(named: "Show details") { showDetails() }
+        .accessibilityAction(named: "End task") { end() }
     }
 
     /// What VoiceOver reads for a row: the name, then each visible column with its label and unit.
-    private func rowDescription(_ p: Proc) -> String {
+    private var rowDescription: String {
         var parts = [p.name]
         for c in columns {
             switch c {
@@ -406,11 +437,11 @@ struct ProcessesView: View {
         return parts.joined(separator: ", ")
     }
 
-    @ViewBuilder private func cell(_ c: ProcColumn, _ p: Proc) -> some View {
+    @ViewBuilder private func cell(_ c: ProcColumn) -> some View {
         switch c {
-        case .cpu: heat(String(format: "%.1f%%", p.cpu), c, share: p.cpu / 100, color: settings.cpuColor, dim: p.cpu < 1)
-        case .mem: heat(bytes(p.mem), c, share: Double(p.mem) / Double(m.memTotal) * 4, color: settings.memoryColor)
-        case .disk: heat(p.disk < 1 ? "0 B/s" : Rates.format(p.disk), c, share: p.disk / 50_000_000, color: settings.diskColor, dim: p.disk < 1)
+        case .cpu: heat(String(format: "%.1f%%", p.cpu), c, share: p.cpu / 100, color: cpuColor, dim: p.cpu < 1)
+        case .mem: heat(bytes(p.mem), c, share: Double(p.mem) / Double(memTotal) * 4, color: memoryColor)
+        case .disk: heat(p.disk < 1 ? "0 B/s" : Rates.format(p.disk), c, share: p.disk / 50_000_000, color: diskColor, dim: p.disk < 1)
         case .pid: plain(String(p.id), c, dim: true)
         case .user: plain(p.user, c, dim: true)
         case .threads: plain(String(p.threads), c)
@@ -430,11 +461,11 @@ struct ProcessesView: View {
         plain(text, c, dim: dim).frame(maxHeight: .infinity)
             .background(color.opacity(min(max(share, 0), 1) * 0.30))
     }
+}
 
-    private func startFormat(_ micros: UInt64) -> String {
-        let d = Date(timeIntervalSince1970: Double(micros) / 1e6)
-        return Calendar.current.isDateInToday(d) ? d.formatted(date: .omitted, time: .shortened) : d.formatted(date: .abbreviated, time: .shortened)
-    }
+private func startFormat(_ micros: UInt64) -> String {
+    let d = Date(timeIntervalSince1970: Double(micros) / 1e6)
+    return Calendar.current.isDateInToday(d) ? d.formatted(date: .omitted, time: .shortened) : d.formatted(date: .abbreviated, time: .shortened)
 }
 
 // MARK: - Details panel

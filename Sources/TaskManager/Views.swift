@@ -31,28 +31,43 @@ enum Scale {
     }
 }
 
-/// Small graph for the sidebar and popover. Drawn straight onto a Canvas: a Swift Charts view per tile was the main cost of
-/// every tick, and these thumbnails don't need axes or interaction.
+/// A series as a path: the line itself, or (area) the line closed down to the baseline. Plain SwiftUI shapes, because a Canvas
+/// (and Swift Charts before it) pulled in the GPU renderer, which alone cost about 45 MB of graphics memory.
+struct SeriesShape: Shape {
+    let data: [Double]
+    let top: Double
+    var inset: CGFloat = 0
+    var area = false
+    func path(in rect: CGRect) -> Path {
+        var p = Path()
+        guard data.count > 1 else { return p }
+        let h = rect.height - inset * 2, step = rect.width / CGFloat(data.count - 1)
+        func y(_ v: Double) -> CGFloat { rect.minY + inset + h * (1 - CGFloat(min(max(v / max(top, 1), 0), 1))) }
+        for (i, v) in data.enumerated() {
+            let pt = CGPoint(x: rect.minX + CGFloat(i) * step, y: y(v))
+            if i == 0 { p.move(to: pt) } else { p.addLine(to: pt) }
+        }
+        if area {
+            p.addLine(to: CGPoint(x: rect.maxX, y: y(0))); p.addLine(to: CGPoint(x: rect.minX, y: y(0))); p.closeSubpath()
+        }
+        return p
+    }
+}
+
+/// Small graph for the sidebar and popover.
 struct Sparkline: View {
     let series: [Series]
     let scale: Scale
     var body: some View {
         let top = max(scale.top(series), 1)
-        Canvas { ctx, size in
-            for (n, s) in series.enumerated() where s.data.count > 1 {
-                let step = size.width / CGFloat(s.data.count - 1)
-                var line = Path()
-                for (i, v) in s.data.enumerated() {
-                    let p = CGPoint(x: CGFloat(i) * step, y: size.height - CGFloat(min(max(v / top, 0), 1)) * size.height)
-                    if i == 0 { line.move(to: p) } else { line.addLine(to: p) }
-                }
+        ZStack {
+            ForEach(Array(series.enumerated()), id: \.offset) { n, s in
                 if n == 0 {
-                    var area = line
-                    area.addLine(to: CGPoint(x: size.width, y: size.height)); area.addLine(to: CGPoint(x: 0, y: size.height)); area.closeSubpath()
-                    ctx.fill(area, with: .linearGradient(Gradient(colors: [s.color.opacity(0.40), s.color.opacity(0.04)]),
-                                                         startPoint: .zero, endPoint: CGPoint(x: 0, y: size.height)))
+                    SeriesShape(data: s.data, top: top, area: true)
+                        .fill(LinearGradient(colors: [s.color.opacity(0.40), s.color.opacity(0.04)], startPoint: .top, endPoint: .bottom))
                 }
-                ctx.stroke(line, with: .color(s.color), style: StrokeStyle(lineWidth: 1.3, lineCap: .round, lineJoin: .round, dash: s.dashed ? [2, 2] : []))
+                SeriesShape(data: s.data, top: top)
+                    .stroke(s.color, style: StrokeStyle(lineWidth: 1.3, lineCap: .round, lineJoin: .round, dash: s.dashed ? [2, 2] : []))
             }
         }
         .background(series.first?.color.opacity(0.10) ?? .clear, in: RoundedRectangle(cornerRadius: 7))
@@ -164,37 +179,37 @@ struct ResourceDetail: View {
     }
 }
 
-/// The big graph: dashed grid at 0, 50 and 100 % of the axis, the series, and axis labels on the right. Drawn on a Canvas
-/// (a Swift Charts view re-laid out every second made this page cost more than the sampling it shows).
+/// The big graph: dashed grid at 0, 50 and 100 % of the axis, the series, and axis labels on the right.
 struct ResourceChart: View {
     let series: [Series]
     let top: Double
     let label: (Double) -> String
     private let inset: CGFloat = 8
 
+    private struct Grid: Shape {
+        let inset: CGFloat
+        func path(in rect: CGRect) -> Path {
+            var p = Path()
+            for f in [0.0, 0.5, 1.0] {
+                let y = rect.minY + inset + (rect.height - inset * 2) * (1 - f)
+                p.move(to: CGPoint(x: rect.minX, y: y)); p.addLine(to: CGPoint(x: rect.maxX, y: y))
+            }
+            return p
+        }
+    }
+
     var body: some View {
         HStack(spacing: 8) {
-            Canvas { ctx, size in
-                let h = size.height - inset * 2
-                func y(_ f: CGFloat) -> CGFloat { inset + h * (1 - f) }
-                for f in [0.0, 0.5, 1.0] {
-                    var g = Path(); g.move(to: CGPoint(x: 0, y: y(f))); g.addLine(to: CGPoint(x: size.width, y: y(f)))
-                    ctx.stroke(g, with: .color(.secondary.opacity(0.45)), style: StrokeStyle(lineWidth: 0.5, dash: [3, 4]))
-                }
-                for (n, s) in series.enumerated() where s.data.count > 1 {
+            ZStack {
+                Grid(inset: inset).stroke(Color.secondary.opacity(0.45), style: StrokeStyle(lineWidth: 0.5, dash: [3, 4]))
+                ForEach(Array(series.enumerated()), id: \.offset) { n, s in
                     let c = Color.metric(s.color)
-                    let step = size.width / CGFloat(s.data.count - 1)
-                    var line = Path()
-                    for (i, v) in s.data.enumerated() {
-                        let p = CGPoint(x: CGFloat(i) * step, y: y(CGFloat(min(max(v / max(top, 1), 0), 1))))
-                        if i == 0 { line.move(to: p) } else { line.addLine(to: p) }
-                    }
                     if n == 0 {
-                        var area = line
-                        area.addLine(to: CGPoint(x: size.width, y: y(0))); area.addLine(to: CGPoint(x: 0, y: y(0))); area.closeSubpath()
-                        ctx.fill(area, with: .linearGradient(Gradient(colors: [c.opacity(0.40), c.opacity(0.02)]), startPoint: CGPoint(x: 0, y: inset), endPoint: CGPoint(x: 0, y: size.height)))
+                        SeriesShape(data: s.data, top: top, inset: inset, area: true)
+                            .fill(LinearGradient(colors: [c.opacity(0.40), c.opacity(0.02)], startPoint: .top, endPoint: .bottom))
                     }
-                    ctx.stroke(line, with: .color(c), style: StrokeStyle(lineWidth: 2.2, lineCap: .round, lineJoin: .round, dash: s.dashed ? [5, 4] : []))
+                    SeriesShape(data: s.data, top: top, inset: inset)
+                        .stroke(c, style: StrokeStyle(lineWidth: 2.2, lineCap: .round, lineJoin: .round, dash: s.dashed ? [5, 4] : []))
                 }
             }
             GeometryReader { g in

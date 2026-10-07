@@ -7,7 +7,7 @@ struct TaskManagerApp: App {
     }
 
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
-    @StateObject private var monitor = Monitor.shared
+    private let monitor = Monitor.shared      // not @StateObject: the App must not re-run its body every second
     @StateObject private var settings = AppSettings.shared
     @StateObject private var nav = Nav.shared
     @StateObject private var updates = UpdateModel()

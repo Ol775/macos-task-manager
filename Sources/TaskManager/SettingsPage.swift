@@ -150,5 +150,6 @@ struct PermissionsSection: View {
             Text("Task Manager needs no special macOS permissions: no Full Disk Access, Accessibility or Screen Recording.")
                 .font(.system(size: ts(11))).foregroundStyle(.secondary).padding(.horizontal, 4)
         }
+        .onAppear { m.countReadable() }
     }
 }

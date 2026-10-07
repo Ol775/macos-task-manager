@@ -137,7 +137,7 @@ struct MenuBarPopover: View {
     @EnvironmentObject var s: AppSettings
     @EnvironmentObject var nav: Nav
 
-    private var top: [Proc] { Array(m.procs.filter { $0.isApp || $0.cpu > 0.5 }.sorted { $0.cpu > $1.cpu }.prefix(5)) }
+    private var top: [Proc] { Array(m.procs.filter(\.isApp).sorted { $0.cpu > $1.cpu }.prefix(5)) }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
