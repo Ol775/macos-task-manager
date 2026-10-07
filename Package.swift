@@ -2,7 +2,7 @@
 import PackageDescription
 
 let package = Package(
-    name: "Tasks",
+    name: "TaskManager",
     platforms: [.macOS(.v14)],
-    targets: [.executableTarget(name: "Tasks", swiftSettings: [.swiftLanguageMode(.v5)])]
+    targets: [.executableTarget(name: "TaskManager", swiftSettings: [.swiftLanguageMode(.v5)])]
 )

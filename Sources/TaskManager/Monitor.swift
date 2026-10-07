@@ -1,0 +1,108 @@
+import AppKit
+import Darwin
+
+struct Proc: Identifiable {
+    let id: Int32
+    let name: String
+    let isApp: Bool
+    var cpu: Double      // percent of one core, like Activity Monitor
+    var mem: UInt64      // resident bytes
+}
+
+@MainActor
+final class Monitor: ObservableObject {
+    static let samples = 60
+    @Published var procs: [Proc] = []
+    @Published var cpuHistory = [Double](repeating: 0, count: samples)
+    @Published var memHistory = [Double](repeating: 0, count: samples)
+    @Published var memUsed: UInt64 = 0
+    let memTotal = ProcessInfo.processInfo.physicalMemory
+    let cores = ProcessInfo.processInfo.activeProcessorCount
+
+    private var lastCPUTicks: (busy: Double, total: Double)?
+    private var lastProcNs: [Int32: UInt64] = [:]
+    private var lastTime = DispatchTime.now().uptimeNanoseconds
+    private var timer: Timer?
+    private let timebase: mach_timebase_info_data_t = {
+        var t = mach_timebase_info_data_t(); mach_timebase_info(&t); return t
+    }()
+
+    func start() {
+        guard timer == nil else { return }
+        tick()
+        timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.tick() }
+        }
+    }
+
+    private func tick() {
+        push(&cpuHistory, totalCPU())
+        memUsed = usedMemory()
+        push(&memHistory, Double(memUsed) / Double(memTotal) * 100)
+        procs = sampleProcesses()
+    }
+
+    private func push(_ a: inout [Double], _ v: Double) { a.removeFirst(); a.append(v) }
+
+    private func totalCPU() -> Double {
+        var info = host_cpu_load_info()
+        var count = mach_msg_type_number_t(MemoryLayout<host_cpu_load_info>.size / MemoryLayout<integer_t>.size)
+        let r = withUnsafeMutablePointer(to: &info) {
+            $0.withMemoryRebound(to: integer_t.self, capacity: Int(count)) {
+                host_statistics(mach_host_self(), HOST_CPU_LOAD_INFO, $0, &count)
+            }
+        }
+        guard r == KERN_SUCCESS else { return 0 }
+        let t = info.cpu_ticks   // user, system, idle, nice
+        let busy = Double(t.0) + Double(t.1) + Double(t.3)
+        let total = busy + Double(t.2)
+        defer { lastCPUTicks = (busy, total) }
+        guard let last = lastCPUTicks, total > last.total else { return 0 }
+        return (busy - last.busy) / (total - last.total) * 100
+    }
+
+    private func usedMemory() -> UInt64 {
+        var vm = vm_statistics64()
+        var count = mach_msg_type_number_t(MemoryLayout<vm_statistics64>.size / MemoryLayout<integer_t>.size)
+        let r = withUnsafeMutablePointer(to: &vm) {
+            $0.withMemoryRebound(to: integer_t.self, capacity: Int(count)) {
+                host_statistics64(mach_host_self(), HOST_VM_INFO64, $0, &count)
+            }
+        }
+        guard r == KERN_SUCCESS else { return 0 }
+        // Matches Activity Monitor's "Memory Used": app + wired + compressed
+        return (UInt64(vm.active_count) + UInt64(vm.wire_count) + UInt64(vm.compressor_page_count)) * UInt64(vm_kernel_page_size)
+    }
+
+    private func sampleProcesses() -> [Proc] {
+        let now = DispatchTime.now().uptimeNanoseconds
+        let wall = Double(now - lastTime)
+        lastTime = now
+
+        var apps: [Int32: String] = [:]
+        for app in NSWorkspace.shared.runningApplications where app.activationPolicy == .regular {
+            apps[app.processIdentifier] = app.localizedName ?? "App"
+        }
+
+        var pids = [Int32](repeating: 0, count: Int(proc_listallpids(nil, 0)) + 64)
+        let n = Int(proc_listallpids(&pids, Int32(pids.count * MemoryLayout<Int32>.size)))
+        var ns: [Int32: UInt64] = [:]
+        var out: [Proc] = []
+        var nameBuf = [CChar](repeating: 0, count: 256)
+
+        for pid in pids.prefix(max(n, 0)) where pid > 0 {
+            var ti = proc_taskinfo()
+            let size = Int32(MemoryLayout<proc_taskinfo>.size)
+            // Fails for other users' processes unless root; those are skipped.
+            guard proc_pidinfo(pid, PROC_PIDTASKINFO, 0, &ti, size) == size else { continue }
+            let abs = ti.pti_total_user + ti.pti_total_system
+            let cpuNs = abs * UInt64(timebase.numer) / UInt64(timebase.denom)
+            ns[pid] = cpuNs
+            let cpu = lastProcNs[pid].map { cpuNs >= $0 ? Double(cpuNs - $0) / wall * 100 : 0 } ?? 0
+            let name = apps[pid] ?? (proc_name(pid, &nameBuf, 256) > 0 ? String(cString: nameBuf) : "pid \(pid)")
+            out.append(Proc(id: pid, name: name, isApp: apps[pid] != nil, cpu: cpu, mem: ti.pti_resident_size))
+        }
+        lastProcNs = ns
+        return out
+    }
+}

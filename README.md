@@ -1,8 +1,7 @@
-# Tasks
+# TaskManager
 
-A simple, elegant, local-only macOS to-do app. SwiftUI + SwiftData, macOS 14+.
+A Windows-style task manager for macOS: live CPU and memory graphs, running apps and processes, End Task. SwiftUI + Swift Charts, macOS 14+.
 
-## Build
-Needs full Xcode (SwiftData's `@Model` macro isn't in the Command Line Tools):
+    ./build-app.sh && open TaskManager.app
 
-    ./build-app.sh && open Tasks.app
+Only processes your user owns are listed (others need root).
