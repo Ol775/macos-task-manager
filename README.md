@@ -24,7 +24,7 @@
 | **Process details** | Double-click a process for its path (with Reveal in Finder), parent, open files, code-signature status and open TCP/UDP ports. |
 | **Performance** | Live 60-second graphs for **CPU**, **Memory**, **GPU**, **Disk** (read / write) and **Network** (send / receive, per interface), with core layout, wired and compressed memory, GPU memory and thermal state. |
 | **System** | Model, chip, core layout, memory, graphics, macOS version and build, up time, thermal state, storage and battery. |
-| **Personalise** | System / Light / Dark / **OLED Black** appearance, accent colour, card corners, per-graph colours, update speed from 0.5 s to 5 s. |
+| **Personalise** | Settings are a page inside the window (⌘,). System / Light / Dark / **OLED Black** appearance, accent colour, card corners, per-graph colours, update speed from 0.5 s to 5 s. |
 | **Permissions check** | Settings → Permissions shows exactly what the app can see and why some system processes are hidden. |
 | **Signed updates** | Checks GitHub releases and installs only Ed25519-signed builds. See [SECURITY.md](SECURITY.md). |
 

@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.3.1 (2026-10-07)
+- **Settings** now live inside the main window (sidebar → Settings, or ⌘,) instead of a separate window, with the appearance, accent, columns, colours and permissions sections on one page.
+
 ## 0.3.0 (2026-10-07)
 - New **Disk** page: read and write transfer rate across all drives, with a per-process **Disk** column.
 - New **Network** page: send and receive rate for all connections together or for one interface (Wi-Fi, Ethernet, …).

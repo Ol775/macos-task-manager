@@ -8,6 +8,7 @@ struct TaskManagerApp: App {
 
     @StateObject private var monitor = Monitor()
     @StateObject private var settings = AppSettings()
+    @StateObject private var nav = Nav()
     @StateObject private var updates = UpdateModel()
     var body: some Scene {
         WindowGroup("Task Manager") {
@@ -15,43 +16,48 @@ struct TaskManagerApp: App {
                 .environmentObject(monitor)
                 .environmentObject(settings)
                 .environmentObject(updates)
+                .environmentObject(nav)
                 .onAppear { settings.apply(); monitor.start(interval: settings.interval) }
                 .onChange(of: settings.interval) { _, v in monitor.setInterval(v) }
         }
         .defaultSize(width: 1120, height: 720)
-        .commands { AppCommands(updates: updates) }
+        .commands { AppCommands(updates: updates, nav: nav) }
 
         Window("About Task Manager", id: "about") {
             AboutView().environmentObject(updates)
         }
         .windowResizability(.contentSize)
 
-        Settings {
-            SettingsView().environmentObject(monitor).environmentObject(settings)
-        }
     }
 }
 
 struct AppCommands: Commands {
     @Environment(\.openWindow) private var openWindow
     let updates: UpdateModel
+    let nav: Nav
     var body: some Commands {
         CommandGroup(replacing: .appInfo) {
             Button("About Task Manager") { openWindow(id: "about") }
             Button("Check for Updates…") { updates.check(); openWindow(id: "about") }
         }
+        CommandGroup(replacing: .appSettings) {
+            Button("Settings…") { nav.item = .settings }.keyboardShortcut(",")
+        }
     }
 }
 
+/// Which page is showing; shared so ⌘, can jump to Settings from the menu.
+@MainActor final class Nav: ObservableObject { @Published var item: Item = .processes }
+
 enum Item: Hashable, CaseIterable {
-    case processes, system, cpu, memory, gpu, disk, network
+    case processes, system, cpu, memory, gpu, disk, network, settings
     var title: String {
         switch self {
         case .processes: "Processes"; case .system: "System"; case .cpu: "CPU"; case .memory: "Memory"
-        case .gpu: "GPU"; case .disk: "Disk"; case .network: "Network"
+        case .gpu: "GPU"; case .disk: "Disk"; case .network: "Network"; case .settings: "Settings"
         }
     }
-    var icon: String { self == .processes ? "list.bullet.rectangle" : "desktopcomputer" }
+    var icon: String { switch self { case .processes: "list.bullet.rectangle"; case .settings: "gearshape"; default: "desktopcomputer" } }
 }
 
 struct ContentView: View {
@@ -59,10 +65,11 @@ struct ContentView: View {
     @EnvironmentObject var s: AppSettings
     @EnvironmentObject var updates: UpdateModel
     @Environment(\.openWindow) private var openWindow
-    @State private var item: Item = .processes
+    @EnvironmentObject var nav: Nav
+    private var item: Item { nav.item }
 
     private var pages: [Item] {
-        Item.allCases.filter { ($0 != .gpu || m.gpuAvailable) && ($0 != .disk || m.diskAvailable) }
+        Item.allCases.filter { $0 != .settings && ($0 != .gpu || m.gpuAvailable) && ($0 != .disk || m.diskAvailable) }
     }
 
     var body: some View {
@@ -81,6 +88,7 @@ struct ContentView: View {
                 case .gpu: GPUDetail()
                 case .disk: DiskDetail()
                 case .network: NetworkDetail()
+                case .settings: SettingsPage()
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -116,7 +124,7 @@ struct ContentView: View {
 
     @ViewBuilder private func navButton(_ page: Item, index: Int, narrow: Bool) -> some View {
         let on = item == page
-        Button { item = page } label: {
+        Button { nav.item = page } label: {
             HStack(spacing: 10) {
                 if let t = tile(page) {
                     Sparkline(series: t.series, scale: t.scale).frame(width: narrow ? 40 : 46, height: 28)
@@ -165,8 +173,11 @@ struct ContentView: View {
                     Label(narrow ? "" : "Update available: \(info.version)", systemImage: "arrow.down.circle.fill").font(.system(size: 12, weight: .medium))
                 }.buttonStyle(.borderless).help("Update available: \(info.version)")
             }
-            SettingsLink { Label(narrow ? "" : "Settings", systemImage: "gearshape").font(.system(size: 13)) }
-                .buttonStyle(.borderless).foregroundStyle(.secondary).help("Settings (⌘,)")
+            Button { nav.item = .settings } label: {
+                Label(narrow ? "" : "Settings", systemImage: "gearshape").font(.system(size: 13, weight: item == .settings ? .semibold : .regular))
+                    .foregroundStyle(item == .settings ? s.accent : Color.secondary)
+            }
+            .buttonStyle(.borderless).help("Settings (⌘,)")
             if !narrow {
                 VStack(alignment: .leading, spacing: 1) {
                     Text("Task Manager").font(.system(size: 11, weight: .semibold))
