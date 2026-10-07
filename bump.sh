@@ -1,5 +1,5 @@
 #!/bin/zsh
-# Usage: ./bump.sh major|minor|patch "what changed"   – updates VERSION and adds a CHANGELOG entry.
+# Usage: ./bump.sh major|minor|patch "what changed"   – updates VERSION, the README version and the CHANGELOG.
 set -e
 cd "$(dirname "$0")"
 kind="${1:-}"; note="${2:-}"
@@ -21,4 +21,5 @@ s = open("CHANGELOG.md").read()
 i = s.index("## ")
 open("CHANGELOG.md", "w").write(s[:i] + f"## {v} ({date.today().isoformat()})\n- {note}\n\n" + s[i:])
 PY
+sed -i '' "s|<!--v-->.*<!--/v-->|<!--v-->v$new<!--/v-->|" README.md
 echo "Version is now $new"

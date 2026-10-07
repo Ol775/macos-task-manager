@@ -1,66 +1,71 @@
-<div align="center">
+<p align="center"><img src="docs/banner.png" alt="Task Manager: a fast, native task manager for macOS" width="720"></p>
 
-<img src="Assets/AppIcon-1024.png" width="128" alt="Task Manager icon">
+# Task Manager – a native, Windows-style system monitor for macOS
 
-# Task Manager
-
-**A fast, native task manager for macOS.** Live CPU, memory, GPU, disk and network graphs, a sortable process list with details and End Task, system information, and light, dark and OLED Black themes.
-
+[![Latest release](https://img.shields.io/github/v/release/Ol775/macos-task-manager?color=0a84ff)](https://github.com/Ol775/macos-task-manager/releases/latest)
 [![CI](https://github.com/Ol775/macos-task-manager/actions/workflows/ci.yml/badge.svg)](https://github.com/Ol775/macos-task-manager/actions/workflows/ci.yml)
-![License: MIT](https://img.shields.io/badge/license-MIT-blue)
-![macOS 15+](https://img.shields.io/badge/macOS-15%2B-black)
-![Swift 6](https://img.shields.io/badge/Swift-6-orange)
-![Apple silicon & Intel](https://img.shields.io/badge/universal-arm64%20%7C%20x86__64-lightgrey)
+[![MIT licence](https://img.shields.io/github/license/Ol775/macos-task-manager?color=0a84ff)](LICENSE)
+![macOS 15+](https://img.shields.io/badge/macOS-15%2B-0a84ff)
+![Apple silicon and Intel](https://img.shields.io/badge/arm64%20%7C%20x86__64-universal-0a84ff)
+![Swift 6](https://img.shields.io/badge/Swift-SwiftUI-0a84ff)
 
-<img src="docs/processes.png" width="760" alt="Processes">
-
-</div>
+**Task Manager** is a free, open-source Mac app that works like the Windows Task Manager: a sortable process list with **End Task**, live **CPU, memory, GPU, disk and network** graphs, and a system overview. It is written in Swift and SwiftUI with no third-party dependencies, runs natively on Apple silicon and Intel, and has Light, Dark and OLED Black themes. Current version: <!--v-->v0.3.1<!--/v-->.
 
 ## Features
 
-| | |
-|---|---|
-| **Processes** | Apps and all processes, sortable and searchable, with a **column picker** (CPU, Memory, Disk, PID, User, Threads, State, Started) and a confirmed **End Task**. |
-| **Process details** | Double-click a process for its path (with Reveal in Finder), parent, open files, code-signature status and open TCP/UDP ports. |
-| **Performance** | Live 60-second graphs for **CPU**, **Memory**, **GPU**, **Disk** (read / write) and **Network** (send / receive, per interface), with core layout, wired and compressed memory, GPU memory and thermal state. |
-| **System** | Model, chip, core layout, memory, graphics, macOS version and build, up time, thermal state, storage and battery. |
-| **Personalise** | Settings are a page inside the window (⌘,). System / Light / Dark / **OLED Black** appearance, accent colour, card corners, per-graph colours, update speed from 0.5 s to 5 s. |
-| **Permissions check** | Settings → Permissions shows exactly what the app can see and why some system processes are hidden. |
-| **Signed updates** | Checks GitHub releases and installs only Ed25519-signed builds. See [SECURITY.md](SECURITY.md). |
+- **Processes** – apps or all processes, sortable and searchable, with a confirmed **End Task**. Pick the columns you want: CPU, Memory, Disk, PID, User, Threads, State and Started.
+- **Process details** – double-click a process for its path (with Reveal in Finder), parent, open files, code-signature status and open TCP/UDP ports.
+- **Performance** – 60-second graphs for **CPU** (performance and efficiency cores), **Memory** (wired, compressed), **GPU**, **Disk** (read and write) and **Network** (send and receive, for all connections or one interface).
+- **System** – model, chip, cores, memory, graphics, macOS version and build, up time, thermal state, storage and battery. The hostname and serial number are never read.
+- **Make it yours** – System / Light / Dark / **OLED Black** appearance, six accent colours plus a custom one, card corner style and per-graph colours. Settings are a page inside the window (⌘,).
+- **Signed updates** – checks GitHub releases and installs only Ed25519-signed builds. See [SECURITY.md](SECURITY.md).
+- **Private** – no telemetry, accounts or analytics. See [PRIVACY.md](PRIVACY.md).
 
-<p align="center">
-  <img src="docs/details.png" width="49%" alt="Process details">
-  <img src="docs/cpu.png" width="49%" alt="CPU">
-</p>
-<p align="center">
-  <img src="docs/disk.png" width="49%" alt="Disk">
-  <img src="docs/network.png" width="49%" alt="Network">
-</p>
-<p align="center">
-  <img src="docs/light.png" width="49%" alt="Light theme">
-  <img src="docs/oled.png" width="49%" alt="OLED Black theme">
-</p>
+## Screenshots
+
+<table>
+<tr>
+<td width="50%"><img src="docs/screenshots/processes.png" alt="Processes: sortable list with CPU, memory, disk and PID"></td>
+<td width="50%"><img src="docs/screenshots/details.png" alt="Process details: path, parent, code signature and open ports"></td>
+</tr>
+<tr>
+<td width="50%"><img src="docs/screenshots/cpu.png" alt="CPU page with a utilisation ring and 60-second graph"></td>
+<td width="50%"><img src="docs/screenshots/gpu.png" alt="GPU page"></td>
+</tr>
+<tr>
+<td width="50%"><img src="docs/screenshots/disk.png" alt="Disk page: read and write transfer rate"></td>
+<td width="50%"><img src="docs/screenshots/network.png" alt="Network page: send and receive rate per interface"></td>
+</tr>
+<tr>
+<td width="50%"><img src="docs/screenshots/system.png" alt="System page: hardware, software, storage and battery"></td>
+<td width="50%"><img src="docs/screenshots/settings.png" alt="Settings page inside the main window"></td>
+</tr>
+<tr>
+<td width="50%"><img src="docs/screenshots/light.png" alt="Light theme"></td>
+<td width="50%"><img src="docs/screenshots/oled.png" alt="OLED Black theme"></td>
+</tr>
+</table>
 
 ## Install
 
-**Homebrew** (clears the first-launch block for you):
+Requires macOS 15 or later. Builds are universal (Apple silicon and Intel).
+
+**Homebrew** – installs the same DMG and clears the macOS first-launch block for you:
 
 ```sh
 brew install --cask Ol775/tap/task-manager
 ```
 
-**Or download** `Task-Manager-<version>.dmg` from [Releases](../../releases), open it and drag **TaskManager** to Applications. Builds are universal (Apple silicon and Intel) and need macOS 15 or later.
+**Download** – get `Task-Manager-<version>.dmg` from [Releases](../../releases), open it and drag **TaskManager** to Applications. Every release also has a `.sha256` file (`shasum -a 256 Task-Manager-<version>.dmg`).
 
-The app is ad-hoc signed, not notarized (that needs a paid Apple Developer ID), so macOS blocks the first launch of a downloaded DMG (the Homebrew install avoids this). Either:
+The app is ad-hoc signed, not notarized (that needs a paid Apple Developer ID), so macOS blocks the first launch of a downloaded DMG. Either:
 
 - open **System Settings → Privacy & Security**, scroll to the message about *TaskManager* and click **Open Anyway** (on macOS 15 and later the old right-click → Open shortcut no longer works), or
 - run `xattr -dr com.apple.quarantine /Applications/TaskManager.app` once in Terminal.
 
 After that, in-app updates install without any prompt, because the app downloads and verifies them itself.
 
-## Build from source
-
-Requires Xcode 16+ (the Swift 6 toolchain):
+**Build from source** – needs Xcode 16 or later (the Swift 6 toolchain):
 
 ```sh
 git clone https://github.com/Ol775/macos-task-manager.git
@@ -69,22 +74,27 @@ cd macos-task-manager
 TaskManager.app/Contents/MacOS/TaskManager --selftest   # updater, sampling and contrast checks
 ```
 
-## Privacy
+## FAQ
 
-No telemetry, accounts or analytics. The only network request is the update check against this repository's GitHub releases (Settings → General turns it off). Hostname and serial number are never read.
+**Why can't I see every process?** macOS only lets an unprivileged app inspect processes owned by the same user, so system and other users' processes aren't listed. Settings → Permissions shows how many are hidden. Showing them would need a privileged helper, which is on the [roadmap](ROADMAP.md) only if there is demand.
 
-## Limits
+**Does it need special permissions?** No. There is no Full Disk Access, Accessibility or Screen Recording prompt.
 
-macOS only lets an unprivileged app inspect processes owned by the same user, so system and other users' processes aren't listed. Settings → Permissions shows the count.
+**Is End Task safe?** It asks first, sends `SIGTERM` (a polite quit request) and only to the exact process that was listed: the start time is re-checked so a reused PID is never signalled.
 
-## Roadmap
+**Why isn't it on the App Store?** The App Store requires the sandbox, which blocks the process APIs the app relies on.
 
-A menu bar mode, alerts and a per-core CPU view are next. See [ROADMAP.md](ROADMAP.md).
+**Why is there no per-process network column?** macOS doesn't expose it without elevated privileges. Network is shown per interface instead.
 
-## Releasing
+## Project
 
-`./bump.sh minor "note"` updates `VERSION` and the changelog. After building and pushing, `./release.sh "note"` builds the universal DMG, signs it with the offline release key and publishes the GitHub release. `tools/makeicon.swift` regenerates the icon.
+- [CHANGELOG.md](CHANGELOG.md) – what changed in each version
+- [ROADMAP.md](ROADMAP.md) – what's next
+- [CONTRIBUTING.md](CONTRIBUTING.md) – building, tests and pull requests
+- [SECURITY.md](SECURITY.md) and [PRIVACY.md](PRIVACY.md)
 
-## License
+Releases are cut with `./bump.sh` and `./release.sh`, which build the universal DMG, sign it with an offline key and update the Homebrew cask. `tools/makeicon.swift` regenerates the icon and `docs/make-banner.swift` the banner.
+
+## Licence
 
 [MIT](LICENSE) © 2026 Ol775
