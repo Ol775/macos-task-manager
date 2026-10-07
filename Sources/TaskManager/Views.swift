@@ -128,7 +128,28 @@ struct ResourceDetail: View {
             .accessibilityHidden(true)
     }
 
+    private var windowSeconds: Int { Int(Double(Monitor.samples) * monitor.interval) }
+
+    /// The graph in words, for VoiceOver.
+    private var summary: String {
+        series.map { s in
+            let now = s.data.last ?? 0, peak = s.data.max() ?? 0
+            if case .percent = scale { return "\(s.name) now \(Int(now.rounded())) percent, highest \(Int(peak.rounded())) percent" }
+            return "\(s.name) now \(Rates.format(now)), highest \(Rates.format(peak))"
+        }.joined(separator: ". ")
+    }
+
     private func chart(top: Double) -> some View {
+        plot(top: top)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("\(title) over the last \(windowSeconds) seconds")
+            .accessibilityValue(summary)
+            .overlay(alignment: .bottomLeading) {
+                Text("Last \(windowSeconds) seconds").font(.system(size: ts(11))).foregroundStyle(.secondary).accessibilityHidden(true)
+            }
+    }
+
+    private func plot(top: Double) -> some View {
         Chart {
             ForEach(series) { s in
                 ForEach(Array(s.data.enumerated()), id: \.offset) { i, v in
@@ -153,16 +174,6 @@ struct ResourceDetail: View {
                     }
                 }.foregroundStyle(Color.secondary)
             }
-        }
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(title) over the last \(Int(Double(Monitor.samples) * monitor.interval)) seconds")
-        .accessibilityValue(series.map { s in
-            let now = s.data.last ?? 0, peak = s.data.max() ?? 0
-            if case .percent = scale { return "\(s.name) now \(Int(now.rounded())) percent, highest \(Int(peak.rounded())) percent" }
-            return "\(s.name) now \(Rates.format(now)), highest \(Rates.format(peak))"
-        }.joined(separator: ". "))
-        .overlay(alignment: .bottomLeading) {
-            Text("Last \(Int(Double(Monitor.samples) * monitor.interval)) seconds").font(.system(size: ts(11))).foregroundStyle(.secondary).accessibilityHidden(true)
         }
     }
 }
