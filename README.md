@@ -39,7 +39,12 @@
 
 Download `Task-Manager-<version>.dmg` from [Releases](../../releases), open it and drag **TaskManager** to Applications. Builds are universal (Apple silicon and Intel) and need macOS 15 or later.
 
-The app is ad-hoc signed, not notarized. If macOS blocks the first launch, right-click the app and choose **Open**. After that, in-app updates install without any prompt.
+The app is ad-hoc signed, not notarized (that needs a paid Apple Developer ID), so macOS blocks the first launch of a downloaded copy. Either:
+
+- open **System Settings → Privacy & Security**, scroll to the message about *TaskManager* and click **Open Anyway** (on macOS 15 and later the old right-click → Open shortcut no longer works), or
+- run `xattr -dr com.apple.quarantine /Applications/TaskManager.app` once in Terminal.
+
+After that, in-app updates install without any prompt, because the app downloads and verifies them itself.
 
 ## Build from source
 
