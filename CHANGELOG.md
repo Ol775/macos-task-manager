@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.4.0 (2026-10-07)
+- **Menu bar mode** (preview): a live CPU / memory / GPU / disk / network readout in the menu bar with a popover of graphs and your busiest apps, plus an option to hide the Dock icon. Turn it on in Settings → Menu bar.
+
 ## 0.3.1 (2026-10-07)
 - **Settings** now live inside the main window (sidebar → Settings, or ⌘,) instead of a separate window, with the appearance, accent, columns, colours and permissions sections on one page.
 

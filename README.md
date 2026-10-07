@@ -9,7 +9,7 @@
 ![Apple silicon and Intel](https://img.shields.io/badge/arm64%20%7C%20x86__64-universal-0a84ff)
 ![Swift 6](https://img.shields.io/badge/Swift-SwiftUI-0a84ff)
 
-**Task Manager** is a free, open-source Mac app that works like the Windows Task Manager: a sortable process list with **End Task**, live **CPU, memory, GPU, disk and network** graphs, and a system overview. It is written in Swift and SwiftUI with no third-party dependencies, runs natively on Apple silicon and Intel, and has Light, Dark and OLED Black themes. Current version: <!--v-->v0.3.1<!--/v-->.
+**Task Manager** is a free, open-source Mac app that works like the Windows Task Manager: a sortable process list with **End Task**, live **CPU, memory, GPU, disk and network** graphs, and a system overview. It is written in Swift and SwiftUI with no third-party dependencies, runs natively on Apple silicon and Intel, and has Light, Dark and OLED Black themes. Current version: <!--v-->v0.4.0<!--/v-->.
 
 ## Features
 
@@ -17,6 +17,7 @@
 - **Process details** – double-click a process for its path (with Reveal in Finder), parent, open files, code-signature status and open TCP/UDP ports.
 - **Performance** – 60-second graphs for **CPU** (performance and efficiency cores), **Memory** (wired, compressed), **GPU**, **Disk** (read and write) and **Network** (send and receive, for all connections or one interface).
 - **System** – model, chip, cores, memory, graphics, macOS version and build, up time, thermal state, storage and battery. The hostname and serial number are never read.
+- **Menu bar mode** (optional) – a live readout in the menu bar (CPU, memory, GPU, disk and network, in any combination) with a popover of graphs and your busiest apps, and an option to hide the Dock icon. Turn it on in Settings → Menu bar.
 - **Make it yours** – System / Light / Dark / **OLED Black** appearance, six accent colours plus a custom one, card corner style and per-graph colours. Settings are a page inside the window (⌘,).
 - **Signed updates** – checks GitHub releases and installs only Ed25519-signed builds. See [SECURITY.md](SECURITY.md).
 - **Private** – no telemetry, accounts or analytics. See [PRIVACY.md](PRIVACY.md).
@@ -30,7 +31,7 @@
 </tr>
 <tr>
 <td width="50%"><img src="docs/screenshots/cpu.png" alt="CPU page with a utilisation ring and 60-second graph"></td>
-<td width="50%"><img src="docs/screenshots/gpu.png" alt="GPU page"></td>
+<td width="50%"><img src="docs/screenshots/menubar.png" alt="Menu bar popover with live graphs and the busiest apps"></td>
 </tr>
 <tr>
 <td width="50%"><img src="docs/screenshots/disk.png" alt="Disk page: read and write transfer rate"></td>

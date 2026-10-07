@@ -17,6 +17,7 @@ extension Color {
 
 @MainActor
 final class AppSettings: ObservableObject {
+    static let shared = AppSettings()
     enum Appearance: String, CaseIterable, Identifiable {
         case system = "System", light = "Light", dark = "Dark", oled = "OLED Black"
         var id: String { rawValue }
@@ -38,6 +39,11 @@ final class AppSettings: ObservableObject {
     @Published var corners: CardCorners { didSet { Self.d.set(corners.rawValue, forKey: "corners") } }
     @Published var columns: [ProcColumn] { didSet { Self.d.set(ProcColumn.encode(columns), forKey: "columns") } }
     @Published var sidebarCollapsed: Bool { didSet { Self.d.set(sidebarCollapsed, forKey: "sidebarCollapsed") } }
+    @Published var menuBarEnabled: Bool { didSet { Self.d.set(menuBarEnabled, forKey: "menuBarEnabled") } }
+    @Published var hideDock: Bool { didSet { Self.d.set(hideDock, forKey: "hideDock") } }
+    @Published var menuShowIcon: Bool { didSet { Self.d.set(menuShowIcon, forKey: "menuShowIcon") } }
+    @Published var menuLabels: Bool { didSet { Self.d.set(menuLabels, forKey: "menuLabels") } }
+    @Published var menuItems: [MenuMetric] { didSet { Self.d.set(MenuMetric.encode(menuItems), forKey: "menuItems") } }
 
     init() {
         let d = Self.d
@@ -56,6 +62,11 @@ final class AppSettings: ObservableObject {
         corners = CardCorners(rawValue: d.string(forKey: "corners") ?? "") ?? .standard
         columns = ProcColumn.decode(d.string(forKey: "columns"))
         sidebarCollapsed = d.bool(forKey: "sidebarCollapsed")
+        menuBarEnabled = d.bool(forKey: "menuBarEnabled")
+        hideDock = d.bool(forKey: "hideDock")
+        menuShowIcon = d.object(forKey: "menuShowIcon") as? Bool ?? true
+        menuLabels = d.object(forKey: "menuLabels") as? Bool ?? true
+        menuItems = MenuMetric.decode(d.string(forKey: "menuItems"))
     }
 
     /// Accent for icons and text: brighter in dark mode, deeper in light mode.

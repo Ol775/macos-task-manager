@@ -6,12 +6,13 @@ struct TaskManagerApp: App {
         if CommandLine.arguments.contains("--selftest") { let ok = Updater.selfTest() && Checks.run(); print(ok ? "selftest ok" : "selftest FAILED"); exit(ok ? 0 : 1) }
     }
 
-    @StateObject private var monitor = Monitor()
-    @StateObject private var settings = AppSettings()
-    @StateObject private var nav = Nav()
+    @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
+    @StateObject private var monitor = Monitor.shared
+    @StateObject private var settings = AppSettings.shared
+    @StateObject private var nav = Nav.shared
     @StateObject private var updates = UpdateModel()
     var body: some Scene {
-        WindowGroup("Task Manager") {
+        Window("Task Manager", id: "main") {
             ContentView()
                 .environmentObject(monitor)
                 .environmentObject(settings)
@@ -47,7 +48,21 @@ struct AppCommands: Commands {
 }
 
 /// Which page is showing; shared so ⌘, can jump to Settings from the menu.
-@MainActor final class Nav: ObservableObject { @Published var item: Item = .processes }
+@MainActor final class Nav: ObservableObject {
+    static let shared = Nav()
+    @Published var item: Item = .processes
+}
+
+/// Starts the menu bar item (when enabled) and brings the window back when the Dock icon is clicked with no window open.
+final class AppDelegate: NSObject, NSApplicationDelegate {
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        MainActor.assumeIsolated { MenuBarController.shared.start() }
+    }
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        if !flag { MainActor.assumeIsolated { MenuBarController.shared.showMainWindow() } }
+        return true
+    }
+}
 
 enum Item: Hashable, CaseIterable {
     case processes, system, cpu, memory, gpu, disk, network, settings
@@ -98,7 +113,10 @@ struct ContentView: View {
         .id(s.themeKey)
         .frame(minWidth: 1040, minHeight: 560)
         .background(OLEDWindow(on: s.oled))
-        .onAppear { if s.autoUpdate { updates.check() } }
+        .onAppear {
+            if s.autoUpdate { updates.check() }
+            MenuBarController.shared.showMainWindow = { NSApp.activate(ignoringOtherApps: true); openWindow(id: "main") }
+        }
     }
 
     private func sidebar(narrow: Bool) -> some View {

@@ -25,6 +25,16 @@ enum Checks {
         check(ProcColumn.decode(ProcColumn.encode(ProcColumn.optional)) == ProcColumn.optional, "columns round trip")
         check(ProcInspector.port(Int32(bitPattern: 0x5000)) == 80 && ProcInspector.port(Int32(0x901F)) == 8080, "port byte order")
 
+        // Menu bar
+        check(MenuMetric.decode(nil) == [.cpu, .memory], "default menu bar items")
+        check(MenuMetric.decode("network,cpu,bogus,cpu") == [.cpu, .network], "menu bar items: unknown dropped, order canonical")
+        check(MenuMetric.decode(MenuMetric.encode(MenuMetric.allCases)) == MenuMetric.allCases, "menu bar items round trip")
+        let v = MenuBarLabel.Values(cpu: 34.4, memory: 71.6, gpu: 0, disk: 2_500_000, network: 12_345)
+        check(MenuBarLabel.text([.cpu, .memory], labels: true, v) == "CPU 34%  MEM 72%", "menu bar text: \(MenuBarLabel.text([.cpu, .memory], labels: true, v))")
+        check(MenuBarLabel.text([.cpu], labels: false, v) == "34%", "menu bar text without labels")
+        check(MenuBarLabel.text([.disk, .network], labels: true, v) == "DSK 2.5 MB/s  NET 12.3 KB/s", "menu bar rates: \(MenuBarLabel.text([.disk, .network], labels: true, v))")
+        check(MenuBarLabel.text([], labels: true, v).isEmpty && MenuBarLabel.rate(0) == "0 B/s" && MenuBarLabel.rate(999) == "999 B/s", "menu bar edge cases")
+
         // Contrast in every theme (WCAG: 4.5:1 for text and fills that carry white text, 3:1 for chart lines)
         let whiteCard = NSColor.white, darkCard = NSColor(white: 0.118, alpha: 1)
         for t in AccentTheme.allCases where t != .custom {

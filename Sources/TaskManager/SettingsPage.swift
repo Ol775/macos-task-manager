@@ -26,6 +26,20 @@ struct SettingsPage: View {
                     row("Check for updates automatically") { Toggle("", isOn: $s.autoUpdate).labelsHidden().toggleStyle(.switch) }
                 }
 
+                section("Menu bar", footer: "A compact readout in the menu bar, and a popover with graphs and your busiest apps. Hiding the Dock icon needs the menu bar item, so the app is always reachable.") {
+                    row("Show in menu bar") { Toggle("", isOn: $s.menuBarEnabled).labelsHidden().toggleStyle(.switch) }
+                    row("Hide Dock icon") { Toggle("", isOn: $s.hideDock).labelsHidden().toggleStyle(.switch).disabled(!s.menuBarEnabled) }
+                    row("Show icon") { Toggle("", isOn: $s.menuShowIcon).labelsHidden().toggleStyle(.switch).disabled(!s.menuBarEnabled) }
+                    row("Show labels (CPU 34%)") { Toggle("", isOn: $s.menuLabels).labelsHidden().toggleStyle(.switch).disabled(!s.menuBarEnabled) }
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), alignment: .leading)], alignment: .leading, spacing: 10) {
+                        ForEach(MenuMetric.allCases) { k in
+                            Toggle(k.title, isOn: Binding(
+                                get: { s.menuItems.contains(k) },
+                                set: { on in s.menuItems = MenuMetric.allCases.filter { $0 == k ? on : s.menuItems.contains($0) } }))
+                        }
+                    }.padding(.vertical, 10).disabled(!s.menuBarEnabled)
+                }
+
                 section("Process columns", footer: "Name is always shown. You can also right-click the column headings in Processes.") {
                     LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), alignment: .leading)], alignment: .leading, spacing: 10) {
                         ForEach(ProcColumn.optional) { c in

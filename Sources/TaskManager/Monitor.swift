@@ -48,6 +48,7 @@ enum Rates {
 
 @MainActor
 final class Monitor: ObservableObject {
+    static let shared = Monitor()
     static let samples = 60
     @Published var procs: [Proc] = []
     @Published var cpuHistory = [Double](repeating: 0, count: samples)

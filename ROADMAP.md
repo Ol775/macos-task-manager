@@ -2,11 +2,11 @@
 
 Where Task Manager is heading. Nothing here is a promise or a date; the order is a best guess and can change. Ideas and votes are welcome as [issues](../../issues).
 
-**Now (v0.3)** – shipped: Processes with End Task and a column picker, process details, CPU / Memory / GPU / Disk / Network pages, System page, accent themes, light / dark / OLED Black, signed GitHub updates, CI, Homebrew install.
+**Now (v0.3)** – shipped: Processes with End Task and a column picker, process details, CPU / Memory / GPU / Disk / Network pages, System page, accent themes, light / dark / OLED Black, signed GitHub updates, CI, Homebrew install, menu bar mode (v0.4.0).
 
 ## Next (v0.4)
 
-- **Menu bar mode.** A compact CPU / memory / GPU readout with a popover, and an option to hide the Dock icon.
+- **Launch at login.** An option for the menu bar item to start with your Mac (`SMAppService`).
 - **Alerts.** Optional notifications when a process stays above a CPU or memory threshold.
 - **Per-core CPU view.** Logical-processor graphs, with performance and efficiency cores grouped.
 - **Per-process network.** Only if macOS exposes it without elevated privileges.
