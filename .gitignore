@@ -1,6 +1,8 @@
-.DS_Store
 .build/
-xcuserdata/
-DerivedData/
+.DS_Store
 *.xcuserstate
+build/
+DerivedData/
+dist/
 TaskManager.app
+xcuserdata/

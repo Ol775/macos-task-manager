@@ -94,6 +94,7 @@ struct Sparkline: View {
 
 struct ResourceDetail: View {
     @EnvironmentObject var monitor: Monitor
+    @EnvironmentObject var settings: AppSettings
     let title, subtitle: String
     let color: Color
     let data: [Double]
@@ -126,7 +127,7 @@ struct ResourceDetail: View {
                 }
                 .frame(height: 260)
                 .padding(18)
-                .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 14))
+                .background(settings.cardColor, in: RoundedRectangle(cornerRadius: 14))
                 .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color(nsColor: .separatorColor).opacity(0.6)))
                 .overlay(alignment: .bottomLeading) {
                     Text("Last \(Int(Double(Monitor.samples) * monitor.interval)) seconds").font(.system(size: 10)).foregroundStyle(.tertiary)
@@ -140,7 +141,7 @@ struct ResourceDetail: View {
                             Text(s.value).font(.system(size: 22, weight: .medium, design: .rounded)).monospacedDigit()
                         }
                         .padding(14).frame(maxWidth: .infinity, alignment: .leading)
-                        .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 12))
+                        .background(settings.cardColor, in: RoundedRectangle(cornerRadius: 12))
                         .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color(nsColor: .separatorColor).opacity(0.6)))
                     }
                 }

@@ -18,7 +18,7 @@ extension Color {
 @MainActor
 final class AppSettings: ObservableObject {
     enum Appearance: String, CaseIterable, Identifiable {
-        case system = "System", light = "Light", dark = "Dark"
+        case system = "System", light = "Light", dark = "Dark", oled = "OLED Black"
         var id: String { rawValue }
     }
     static let defaultColors = (cpu: "0A84FF", memory: "BF5AF2", gpu: "FF9F0A")
@@ -26,6 +26,7 @@ final class AppSettings: ObservableObject {
 
     @Published var appearance: Appearance { didSet { Self.d.set(appearance.rawValue, forKey: "appearance"); apply() } }
     @Published var interval: Double { didSet { Self.d.set(interval, forKey: "interval") } }
+    @Published var autoUpdate: Bool { didSet { Self.d.set(autoUpdate, forKey: "autoUpdate") } }
     @Published var appsOnly: Bool { didSet { Self.d.set(appsOnly, forKey: "appsOnly") } }
     @Published var cpuColor: Color { didSet { Self.d.set(cpuColor.hex, forKey: "cpuColor") } }
     @Published var memoryColor: Color { didSet { Self.d.set(memoryColor.hex, forKey: "memoryColor") } }
@@ -37,14 +38,24 @@ final class AppSettings: ObservableObject {
         let i = d.double(forKey: "interval")
         interval = i > 0 ? i : 1
         appsOnly = d.object(forKey: "appsOnly") as? Bool ?? true
+        autoUpdate = d.object(forKey: "autoUpdate") as? Bool ?? true
         cpuColor = Color(hex: d.string(forKey: "cpuColor") ?? Self.defaultColors.cpu)
         memoryColor = Color(hex: d.string(forKey: "memoryColor") ?? Self.defaultColors.memory)
         gpuColor = Color(hex: d.string(forKey: "gpuColor") ?? Self.defaultColors.gpu)
     }
 
+    var oled: Bool { appearance == .oled }
+
     func apply() {
-        NSApp?.appearance = appearance == .system ? nil : NSAppearance(named: appearance == .dark ? .darkAqua : .aqua)
+        switch appearance {
+        case .system: NSApp?.appearance = nil
+        case .light: NSApp?.appearance = NSAppearance(named: .aqua)
+        case .dark, .oled: NSApp?.appearance = NSAppearance(named: .darkAqua)     // OLED is dark with pure-black surfaces
+        }
     }
+
+    /// Surface colour for cards: pure-black theme uses a barely-lifted grey so cards still read on #000.
+    var cardColor: Color { oled ? Color(white: 0.07) : Color(nsColor: .controlBackgroundColor) }
 
     func resetColors() {
         cpuColor = Color(hex: Self.defaultColors.cpu)
@@ -78,6 +89,7 @@ struct GeneralSettings: View {
                 Text("5 seconds").tag(5.0)
             }
             Toggle("Show apps only in Processes", isOn: $s.appsOnly)
+            Toggle("Check for updates automatically", isOn: $s.autoUpdate)
         }
         .formStyle(.grouped)
     }
@@ -127,6 +139,42 @@ struct StatusRow: View {
                 Text(title).fontWeight(.medium)
                 Text(detail).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
+        }
+    }
+}
+
+extension View {
+    /// Pure-black surfaces for the OLED theme (sidebar, detail and tables).
+    @ViewBuilder func oledSurfaces(_ on: Bool) -> some View {
+        if on { self.scrollContentBackground(.hidden).containerBackground(Color.black, for: .window) } else { self }
+    }
+}
+
+/// The OLED theme needs the sidebar/toolbar blur to read as true #000. Each NSVisualEffectView gets a black shim behind
+/// its content (the blur is the view's own layer, so the shim covers it); the shims are removed when the theme is off.
+struct OLEDWindow: NSViewRepresentable {
+    let on: Bool
+    private static let shimID = NSUserInterfaceItemIdentifier("oled-shim")
+
+    func makeNSView(context: Context) -> NSView { NSView() }
+    func updateNSView(_ view: NSView, context: Context) {
+        let on = self.on
+        DispatchQueue.main.async {
+            guard let root = view.window?.contentView?.superview else { return }
+            func walk(_ v: NSView) {
+                if v is NSVisualEffectView {
+                    let shim = v.subviews.first { $0.identifier == Self.shimID }
+                    if on, shim == nil {
+                        let s = NSView(frame: v.bounds)
+                        s.identifier = Self.shimID; s.autoresizingMask = [.width, .height]
+                        s.wantsLayer = true; s.layer?.backgroundColor = NSColor.black.cgColor
+                        v.addSubview(s, positioned: .below, relativeTo: v.subviews.first)
+                    } else if !on { shim?.removeFromSuperview() }
+                }
+                v.subviews.forEach(walk)
+            }
+            walk(root)
+            view.window?.backgroundColor = on ? .black : .windowBackgroundColor
         }
     }
 }
