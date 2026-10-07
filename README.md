@@ -43,9 +43,15 @@
 
 ## Install
 
-Download `Task-Manager-<version>.dmg` from [Releases](../../releases), open it and drag **TaskManager** to Applications. Builds are universal (Apple silicon and Intel) and need macOS 15 or later.
+**Homebrew** (clears the first-launch block for you):
 
-The app is ad-hoc signed, not notarized (that needs a paid Apple Developer ID), so macOS blocks the first launch of a downloaded copy. Either:
+```sh
+brew install --cask Ol775/tap/task-manager
+```
+
+**Or download** `Task-Manager-<version>.dmg` from [Releases](../../releases), open it and drag **TaskManager** to Applications. Builds are universal (Apple silicon and Intel) and need macOS 15 or later.
+
+The app is ad-hoc signed, not notarized (that needs a paid Apple Developer ID), so macOS blocks the first launch of a downloaded DMG (the Homebrew install avoids this). Either:
 
 - open **System Settings → Privacy & Security**, scroll to the message about *TaskManager* and click **Open Anyway** (on macOS 15 and later the old right-click → Open shortcut no longer works), or
 - run `xattr -dr com.apple.quarantine /Applications/TaskManager.app` once in Terminal.

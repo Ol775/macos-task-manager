@@ -2,7 +2,7 @@
 
 Where Task Manager is heading. Nothing here is a promise or a date; the order is a best guess and can change. Ideas and votes are welcome as [issues](../../issues).
 
-**Now (v0.3)** – shipped: Processes with End Task and a column picker, process details, CPU / Memory / GPU / Disk / Network pages, System page, accent themes, light / dark / OLED Black, signed GitHub updates, CI.
+**Now (v0.3)** – shipped: Processes with End Task and a column picker, process details, CPU / Memory / GPU / Disk / Network pages, System page, accent themes, light / dark / OLED Black, signed GitHub updates, CI, Homebrew install.
 
 ## Next (v0.4)
 
@@ -23,7 +23,6 @@ Where Task Manager is heading. Nothing here is a promise or a date; the order is
 
 - **Notarization.** Removes the first-launch "Open Anyway" step. Requires a paid Apple Developer ID.
 - **Other users' and system processes.** macOS hides them from unprivileged apps. Showing them would need a privileged helper (`SMAppService`) with its own security review, so it only happens if there is clear demand.
-- **Homebrew cask.** A tap entry for `brew install --cask`; easier once releases are notarized.
 
 ## Principles
 
