@@ -2,7 +2,7 @@
 # Builds the universal app and packs dist/Task-Manager-<version>.dmg (drag-to-Applications installer).
 set -e
 cd "$(dirname "$0")"
-UNIVERSAL=1 ./build-app.sh >/dev/null
+UNIVERSAL=${UNIVERSAL-1} ./build-app.sh >/dev/null
 ver=$(cat VERSION)
 out="dist/Task-Manager-$ver.dmg"
 stage=$(mktemp -d)

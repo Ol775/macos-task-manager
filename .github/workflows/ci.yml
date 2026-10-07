@@ -15,11 +15,12 @@ jobs:
         run: ./build-app.sh
       - name: Self-test
         run: TaskManager.app/Contents/MacOS/TaskManager --selftest
-      # Tagged builds also pack a universal DMG. It is only kept as a workflow artifact: the signed DMG on the release is
+      # Tagged builds also pack a DMG. It is only kept as a workflow artifact: the signed DMG on the release is
       # made offline (./release.sh) and must not be replaced, or the in-app updater would reject it.
-      - name: Universal DMG
+      # (Single-architecture here: the runner's Xcode can't do the universal build that release.sh does locally.)
+      - name: DMG
         if: startsWith(github.ref, 'refs/tags/v')
-        run: ./make-dmg.sh
+        run: UNIVERSAL= ./make-dmg.sh
       - uses: actions/upload-artifact@v4
         if: startsWith(github.ref, 'refs/tags/v')
         with:
