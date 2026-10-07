@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.4.2 (2026-10-07)
+- **Faster and friendlier.** Idle CPU use is about a third of what it was (graphs are drawn directly instead of with Swift Charts, process names and icons are looked up once, and a hidden or minimized window no longer redraws); the Processes page now says when macOS protects some processes, shows a message when a search finds nothing, says "1 process" correctly, and clears the selection when a process ends; End Task shows the PID and path; ad hoc signatures no longer get a green seal; the graph caption no longer overlaps the line.
+
 ## 0.4.1 (2026-10-07)
 - **Security and accessibility hardening.** Code-signature labels now come from the certificate chain (a look-alike certificate is reported as unverified instead of Apple or Developer ID), update URLs reject path tricks, the installer re-verifies the new app after copying it, rates can no longer crash on NaN or infinity, and the app runs with the hardened runtime. Accessibility: VoiceOver labels and values everywhere, keyboard navigation of the process list (↑ ↓ Return Esc, ⌘I, ⌘⌫), a **Text size** setting, Reduce Motion and Increase Contrast support, and higher-contrast secondary text.
 

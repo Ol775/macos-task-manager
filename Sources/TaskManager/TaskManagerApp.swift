@@ -75,8 +75,63 @@ enum Item: Hashable, CaseIterable {
     var icon: String { switch self { case .processes: "list.bullet.rectangle"; case .settings: "gearshape"; default: "desktopcomputer" } }
 }
 
-struct ContentView: View {
+/// One sidebar row. It is its own view so that the per-second updates redraw only the small graphs here, not the whole window.
+struct NavButton: View {
     @EnvironmentObject var m: Monitor
+    @EnvironmentObject var s: AppSettings
+    @EnvironmentObject var nav: Nav
+    let page: Item
+    let index: Int
+    let narrow: Bool
+
+    var body: some View {
+        let on = nav.item == page
+        let t = tile()
+        Button { nav.item = page } label: {
+            HStack(spacing: 10) {
+                if let t {
+                    Sparkline(series: t.series, scale: t.scale).frame(width: narrow ? ts(40) : ts(46), height: ts(28))
+                    if !narrow {
+                        VStack(alignment: .leading, spacing: 0) {
+                            Text(page.title).font(.system(size: ts(13), weight: on ? .semibold : .regular))
+                            Text(t.value).font(.system(size: ts(11.5))).monospacedDigit().foregroundStyle(.secondary).lineLimit(1)
+                        }
+                    }
+                } else {
+                    Image(systemName: page.icon).font(.system(size: ts(16))).foregroundStyle(s.accent).frame(width: narrow ? ts(40) : ts(46))
+                    if !narrow { Text(page.title).font(.system(size: ts(13), weight: on ? .semibold : .regular)) }
+                }
+                if !narrow { Spacer(minLength: 0) }
+            }
+            .padding(.horizontal, 8).padding(.vertical, 6)
+            .background(RoundedRectangle(cornerRadius: 9, style: .continuous).fill(on ? (s.oled ? Color(white: 0.16) : s.accent.opacity(0.18)) : .clear))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain).help("\(page.title) (⌘\(index + 1))")
+        .keyboardShortcut(KeyEquivalent(Character("\(index + 1)")), modifiers: .command)
+        .accessibilityLabel(page.title).accessibilityValue(t?.value ?? "").accessibilityAddTraits(on ? .isSelected : [])
+    }
+
+    private func tile() -> (series: [Series], scale: Scale, value: String)? {
+        func pct(_ d: [Double]) -> String { String(format: "%.0f%%", d.last ?? 0) }
+        switch page {
+        case .cpu: return ([Series(name: "CPU", data: m.cpuHistory, color: Color.metric(s.cpuColor))], .percent, pct(m.cpuHistory))
+        case .memory: return ([Series(name: "Memory", data: m.memHistory, color: Color.metric(s.memoryColor))], .percent, pct(m.memHistory))
+        case .gpu: return ([Series(name: "GPU", data: m.gpuHistory, color: Color.metric(s.gpuColor))], .percent, pct(m.gpuHistory))
+        case .disk:
+            let sum = zip(m.diskRead, m.diskWrite).map(+)
+            return ([Series(name: "Disk", data: sum, color: Color.metric(s.diskColor))], .rate(floor: 1_000_000), Rates.format(sum.last ?? 0))
+        case .network:
+            let sum = zip(m.netRx["all"] ?? [], m.netTx["all"] ?? []).map(+)
+            let data = sum.isEmpty ? [Double](repeating: 0, count: Monitor.samples) : sum
+            return ([Series(name: "Network", data: data, color: Color.metric(s.networkColor))], .rate(floor: 100_000), Rates.format(data.last ?? 0))
+        default: return nil
+        }
+    }
+}
+
+struct ContentView: View {
+    private var m: Monitor { Monitor.shared }      // not observed: this view must not redraw every second
     @EnvironmentObject var s: AppSettings
     @EnvironmentObject var updates: UpdateModel
     @Environment(\.openWindow) private var openWindow
@@ -135,56 +190,12 @@ struct ContentView: View {
                     Text("PERFORMANCE").font(.system(size: ts(10.5), weight: .semibold)).foregroundStyle(.secondary)
                         .padding(.horizontal, 10).padding(.top, 12).padding(.bottom, 2)
                 } else if page == .cpu { Divider().padding(.vertical, 6) }
-                navButton(page, index: index, narrow: narrow)
+                NavButton(page: page, index: index, narrow: narrow)
             }
             Spacer()
             footer(narrow: narrow)
         }
         .padding(10)
-    }
-
-    @ViewBuilder private func navButton(_ page: Item, index: Int, narrow: Bool) -> some View {
-        let on = item == page
-        Button { nav.item = page } label: {
-            HStack(spacing: 10) {
-                if let t = tile(page) {
-                    Sparkline(series: t.series, scale: t.scale).frame(width: narrow ? ts(40) : ts(46), height: ts(28))
-                    if !narrow {
-                        VStack(alignment: .leading, spacing: 0) {
-                            Text(page.title).font(.system(size: ts(13), weight: on ? .semibold : .regular))
-                            Text(t.value).font(.system(size: ts(11.5))).monospacedDigit().foregroundStyle(.secondary).lineLimit(1)
-                        }
-                    }
-                } else {
-                    Image(systemName: page.icon).font(.system(size: ts(16))).foregroundStyle(s.accent).frame(width: narrow ? ts(40) : ts(46))
-                    if !narrow { Text(page.title).font(.system(size: ts(13), weight: on ? .semibold : .regular)) }
-                }
-                if !narrow { Spacer(minLength: 0) }
-            }
-            .padding(.horizontal, 8).padding(.vertical, 6)
-            .background(RoundedRectangle(cornerRadius: 9, style: .continuous).fill(on ? (s.oled ? Color(white: 0.16) : s.accent.opacity(0.18)) : .clear))
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain).help("\(page.title) (⌘\(index + 1))")
-        .keyboardShortcut(KeyEquivalent(Character("\(index + 1)")), modifiers: .command)
-        .accessibilityLabel(page.title).accessibilityValue(tile(page)?.value ?? "").accessibilityAddTraits(on ? .isSelected : [])
-    }
-
-    private func tile(_ page: Item) -> (series: [Series], scale: Scale, value: String)? {
-        func pct(_ d: [Double]) -> String { String(format: "%.0f%%", d.last ?? 0) }
-        switch page {
-        case .cpu: return ([Series(name: "CPU", data: m.cpuHistory, color: Color.metric(s.cpuColor))], .percent, pct(m.cpuHistory))
-        case .memory: return ([Series(name: "Memory", data: m.memHistory, color: Color.metric(s.memoryColor))], .percent, pct(m.memHistory))
-        case .gpu: return ([Series(name: "GPU", data: m.gpuHistory, color: Color.metric(s.gpuColor))], .percent, pct(m.gpuHistory))
-        case .disk:
-            let sum = zip(m.diskRead, m.diskWrite).map(+)
-            return ([Series(name: "Disk", data: sum, color: Color.metric(s.diskColor))], .rate(floor: 1_000_000), Rates.format(sum.last ?? 0))
-        case .network:
-            let sum = zip(m.netRx["all"] ?? [], m.netTx["all"] ?? []).map(+)
-            let data = sum.isEmpty ? [Double](repeating: 0, count: Monitor.samples) : sum
-            return ([Series(name: "Network", data: data, color: Color.metric(s.networkColor))], .rate(floor: 100_000), Rates.format(data.last ?? 0))
-        default: return nil
-        }
     }
 
     private func footer(narrow: Bool) -> some View {

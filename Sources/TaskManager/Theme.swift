@@ -130,13 +130,12 @@ struct RingGauge: View {
     let color: Color
     var size: CGFloat = 120
     var line: CGFloat = 12
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     var body: some View {
         ZStack {
             Circle().stroke(Color.primary.opacity(0.10), lineWidth: line)
             Circle().trim(from: 0, to: CGFloat(min(max(value, 0), 100) / 100))
                 .stroke(color, style: StrokeStyle(lineWidth: line, lineCap: .round))
-                .rotationEffect(.degrees(-90)).animation(reduceMotion ? nil : .easeOut(duration: 0.4), value: value)
+                .rotationEffect(.degrees(-90))      // not animated: easing the ring every second kept the render loop busy and doubled the page's CPU use
             VStack(spacing: 0) {
                 Text(String(format: "%.0f%%", value)).font(.system(size: size * 0.26, weight: .bold, design: .rounded)).monospacedDigit()
                 Text("used").font(.system(size: size * 0.10)).foregroundStyle(.secondary)

@@ -51,6 +51,8 @@ struct SigningInfo {
     var kind = "Unknown"      // Apple, Developer ID, App Store, Ad hoc, Unsigned, Invalid
     var detail = ""           // signer / team
     var valid = false
+    /// A green seal only for code whose signer Apple vouches for. Ad hoc code is intact but anyone could have made it.
+    var vouched: Bool { valid && ["Apple", "Mac App Store", "Developer ID", "Apple-issued certificate"].contains(kind) }
 }
 
 struct ProcDetails {
@@ -160,8 +162,8 @@ enum ProcInspector {
 @MainActor func endTask(_ p: Proc) {
     guard p.id > 1 else { return }
     let confirm = NSAlert()
-    confirm.messageText = "End “\(p.name)”?"
-    confirm.informativeText = "It will be asked to quit. Unsaved work in it may be lost."
+    confirm.messageText = "End “\(p.name)” (PID \(p.id))?"
+    confirm.informativeText = (ProcInspector.path(p.id).map { "\($0)\n\n" } ?? "") + "It will be asked to quit. Unsaved work in it may be lost."
     confirm.addButton(withTitle: "End Task").hasDestructiveAction = true
     confirm.addButton(withTitle: "Cancel")
     guard confirm.runModal() == .alertFirstButtonReturn else { return }
@@ -215,6 +217,13 @@ struct ProcessesView: View {
 
     private var columns: [ProcColumn] { settings.columns }
 
+    private func subtitle(_ n: Int) -> String {
+        if settings.appsOnly { return n == 1 ? "1 app" : "\(n) apps" }
+        let hidden = max(m.pidTotal - m.pidReadable, 0)
+        let base = n == 1 ? "1 process" : "\(n) processes"
+        return search.isEmpty && hidden > 0 ? base + " · \(hidden) more are protected by macOS" : base
+    }
+
     private func move(_ delta: Int, in rows: [Proc], _ proxy: ScrollViewProxy) {
         guard !rows.isEmpty else { return }
         let i = selection.flatMap { id in rows.firstIndex { $0.id == id } }
@@ -227,17 +236,17 @@ struct ProcessesView: View {
     var body: some View {
         let rows = rows
         VStack(alignment: .leading, spacing: 16) {
-            PageHeader(title: "Processes", subtitle: "\(rows.count) \(settings.appsOnly ? "apps" : "processes")") { EmptyView() }
+            PageHeader(title: "Processes", subtitle: subtitle(rows.count)) { EmptyView() }
             HStack(spacing: 10) {
                 PillPicker(selection: $settings.appsOnly, options: [(true, "Apps"), (false, "All Processes")])
                 Spacer(minLength: 8)
                 searchField
                 columnMenu
                 Button { showDetails.toggle() } label: { Label("Details", systemImage: "sidebar.right") }
-                    .help("Show details for the selected process (⌘I)").disabled(selection == nil && !showDetails)
+                    .help("Show details for the selected process (⌘I)").disabled(selected == nil && !showDetails)
                     .keyboardShortcut("i", modifiers: .command)
                 Button { if let p = selected { endTask(p) } } label: { Label("End Task", systemImage: "xmark.circle") }
-                    .help("End the selected task (⌘⌫)").disabled(selection == nil)
+                    .help("End the selected task (⌘⌫)").disabled(selected == nil)
                     .keyboardShortcut(.delete, modifiers: .command)
             }
             .labelStyle(.iconOnly).controlSize(.large)
@@ -254,7 +263,7 @@ struct ProcessesView: View {
                                 }
                             }
                             // Keyboard: ↑ ↓ move the selection, Return shows details, Esc closes them.
-                            .focusable().focused($listFocused)
+                            .focusable().focused($listFocused).focusEffectDisabled()
                             .onKeyPress(.upArrow) { move(-1, in: rows, proxy); return .handled }
                             .onKeyPress(.downArrow) { move(1, in: rows, proxy); return .handled }
                             .onKeyPress(.return) { if selection != nil { showDetails = true; return .handled }; return .ignored }
@@ -264,13 +273,27 @@ struct ProcessesView: View {
                     }
                     .frame(width: max(g.size.width, ts(160) + columns.reduce(0) { $0 + $1.width }), height: g.size.height)
                 }
+                .overlay { if rows.isEmpty { emptyState } }
             }
-            .card().clipShape(RoundedRectangle(cornerRadius: settings.corners.radius, style: .continuous))
+            .card()
+            .overlay { RoundedRectangle(cornerRadius: settings.corners.radius, style: .continuous).stroke(settings.accent, lineWidth: 2).opacity(listFocused ? 1 : 0).allowsHitTesting(false) }.clipShape(RoundedRectangle(cornerRadius: settings.corners.radius, style: .continuous))
         }
         .padding(24).frame(maxHeight: .infinity, alignment: .top)
-        .inspector(isPresented: Binding(get: { showDetails && selection != nil }, set: { showDetails = $0 })) {
+        .onAppear { m.processWatchers += 1; m.refreshProcesses() }
+        .onDisappear { m.processWatchers -= 1 }
+        .onChange(of: selected == nil) { _, gone in if gone { selection = nil } }      // the process ended: nothing is selected any more
+        .inspector(isPresented: Binding(get: { showDetails && selected != nil }, set: { showDetails = $0 })) {
             if let p = selected { ProcessDetailsView(proc: p, close: { showDetails = false }).inspectorColumnWidth(min: 280, ideal: 320, max: 440) }
         }
+    }
+
+    private var emptyState: some View {
+        VStack(spacing: 8) {
+            Image(systemName: "magnifyingglass").font(.system(size: ts(28))).foregroundStyle(.secondary).accessibilityHidden(true)
+            Text(search.isEmpty ? "Nothing to show yet" : "No \(settings.appsOnly ? "apps" : "processes") match “\(search)”").font(.system(size: ts(15), weight: .semibold))
+            if settings.appsOnly && !search.isEmpty { Text("Switch to All Processes to search system processes too.").font(.system(size: ts(12))).foregroundStyle(.secondary) }
+        }
+        .padding(.top, ts(60)).frame(maxHeight: .infinity, alignment: .top).accessibilityElement(children: .combine)
     }
 
     private var searchField: some View {
@@ -454,8 +477,8 @@ struct ProcessDetailsView: View {
                     }
                     group("Code signature") {
                         HStack(spacing: 8) {
-                            Image(systemName: d.signing.valid ? "checkmark.seal.fill" : "exclamationmark.triangle.fill")
-                                .foregroundStyle(d.signing.valid ? Color.green : Color.orange).accessibilityHidden(true)
+                            Image(systemName: d.signing.vouched ? "checkmark.seal.fill" : (d.signing.valid ? "seal" : "exclamationmark.triangle.fill"))
+                                .foregroundStyle(d.signing.vouched ? Color.green : (d.signing.valid ? Color.secondary : Color.orange)).accessibilityHidden(true)
                             Text(d.signing.kind).fontWeight(.medium)
                         }.padding(.vertical, 6)
                         if !d.signing.detail.isEmpty {

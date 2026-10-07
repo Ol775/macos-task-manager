@@ -56,9 +56,9 @@ enum Checks {
 
         // Live sampling of this process
         let m = Monitor()
-        m.tick()
+        m.tick(force: true)
         Thread.sleep(forTimeInterval: 0.3)
-        m.tick()
+        m.tick(force: true)
         let me = getpid()
         if let p = m.procs.first(where: { $0.id == me }) {
             check(p.threads > 0, "own thread count")

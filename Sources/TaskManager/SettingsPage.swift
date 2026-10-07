@@ -3,7 +3,6 @@ import SwiftUI
 /// Settings live inside the main window (sidebar → Settings, or ⌘,) rather than in a separate window.
 struct SettingsPage: View {
     @EnvironmentObject var s: AppSettings
-    @EnvironmentObject var m: Monitor
 
     var body: some View {
         ScrollView {
@@ -65,7 +64,7 @@ struct SettingsPage: View {
                     HStack { Spacer(); Button("Reset Colours") { s.resetColors() } }.padding(.vertical, 8)
                 }
 
-                permissions
+                PermissionsSection()
             }
             .padding(24).frame(maxWidth: 820, alignment: .leading).frame(maxWidth: .infinity)
         }
@@ -89,22 +88,6 @@ struct SettingsPage: View {
             if s.theme == .custom { ColorPicker("Custom accent colour", selection: $s.customAccent, supportsOpacity: false).labelsHidden() }
         }
         .padding(.leading, 3)
-    }
-
-    private var permissions: some View {
-        let hidden = max(m.pidTotal - m.pidReadable, 0)
-        return section("Permissions", footer: "Task Manager needs no special macOS permissions: no Full Disk Access, Accessibility or Screen Recording.") {
-            StatusRow(ok: true, title: "Your apps and processes", detail: "Full access: CPU, memory, disk, details and End Task all work.").padding(.vertical, 8)
-            Divider().opacity(0.5)
-            StatusRow(ok: hidden == 0, title: "System and other users’ processes",
-                      detail: "Showing \(m.pidReadable) of \(m.pidTotal). \(hidden) are hidden because macOS only lets administrators inspect them. Not needed for everyday use.").padding(.vertical, 8)
-            Divider().opacity(0.5)
-            StatusRow(ok: m.gpuAvailable, title: "GPU statistics",
-                      detail: m.gpuAvailable ? "Reading utilisation from the graphics driver." : "No GPU statistics are available on this Mac.").padding(.vertical, 8)
-            Divider().opacity(0.5)
-            StatusRow(ok: m.diskAvailable, title: "Disk statistics",
-                      detail: m.diskAvailable ? "Reading transfer counters from the storage drivers." : "No disk statistics are available on this Mac.").padding(.vertical, 8)
-        }
     }
 
     private func section<C: View>(_ title: String, footer: String? = nil, @ViewBuilder _ content: () -> C) -> some View {
@@ -141,5 +124,31 @@ struct StatusRow: View {
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(ok ? "OK" : "Needs attention"): \(title). \(detail)")
+    }
+}
+
+/// The permissions card is the only part of Settings that shows live data, so it alone watches the monitor.
+struct PermissionsSection: View {
+    @EnvironmentObject var m: Monitor
+    var body: some View {
+        let hidden = max(m.pidTotal - m.pidReadable, 0)
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Permissions").font(.system(size: ts(13), weight: .semibold)).foregroundStyle(.secondary).padding(.leading, 4).accessibilityAddTraits(.isHeader)
+            VStack(alignment: .leading, spacing: 0) {
+                StatusRow(ok: true, title: "Your apps and processes", detail: "Full access: CPU, memory, disk, details and End Task all work.").padding(.vertical, 8)
+                Divider().opacity(0.5)
+                StatusRow(ok: hidden == 0, title: "System and other users’ processes",
+                          detail: "Showing \(m.pidReadable) of \(m.pidTotal). \(hidden) are hidden because macOS only lets administrators inspect them. Not needed for everyday use.").padding(.vertical, 8)
+                Divider().opacity(0.5)
+                StatusRow(ok: m.gpuAvailable, title: "GPU statistics",
+                          detail: m.gpuAvailable ? "Reading utilisation from the graphics driver." : "No GPU statistics are available on this Mac.").padding(.vertical, 8)
+                Divider().opacity(0.5)
+                StatusRow(ok: m.diskAvailable, title: "Disk statistics",
+                          detail: m.diskAvailable ? "Reading transfer counters from the storage drivers." : "No disk statistics are available on this Mac.").padding(.vertical, 8)
+            }
+            .padding(.horizontal, 16).frame(maxWidth: .infinity, alignment: .leading).card()
+            Text("Task Manager needs no special macOS permissions: no Full Disk Access, Accessibility or Screen Recording.")
+                .font(.system(size: ts(11))).foregroundStyle(.secondary).padding(.horizontal, 4)
+        }
     }
 }

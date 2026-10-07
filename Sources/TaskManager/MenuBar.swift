@@ -55,7 +55,7 @@ enum MenuBarLabel {
 
 /// Owns the menu bar item, its popover and the Dock-icon choice. Everything follows `AppSettings`.
 @MainActor
-final class MenuBarController: NSObject {
+final class MenuBarController: NSObject, NSPopoverDelegate {
     static let shared = MenuBarController()
     /// Set by the main window; brings the window to the front (opening it if it was closed).
     var showMainWindow: () -> Void = {}
@@ -70,10 +70,11 @@ final class MenuBarController: NSObject {
         started = true
         let s = AppSettings.shared, m = Monitor.shared
         popover.behavior = .transient
+        popover.delegate = self
         popover.contentViewController = NSHostingController(rootView:
             MenuBarPopover().environmentObject(m).environmentObject(s).environmentObject(Nav.shared))
         s.objectWillChange.receive(on: RunLoop.main).sink { [weak self] _ in DispatchQueue.main.async { self?.sync() } }.store(in: &bag)
-        m.objectWillChange.debounce(for: .milliseconds(150), scheduler: RunLoop.main).sink { [weak self] _ in self?.refreshTitle() }.store(in: &bag)
+        m.onTick = { [weak self] in self?.refreshTitle() }
         sync()
         // For screenshots: `--popover` opens the popover shortly after launch (the item can sit behind a menu bar manager).
         if CommandLine.arguments.contains("--popover") { DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in self?.toggle() } }
@@ -124,6 +125,9 @@ final class MenuBarController: NSObject {
     }
 
     func closePopover() { popover.performClose(nil) }
+
+    func popoverWillShow(_ notification: Notification) { Monitor.shared.popoverOpen = true; Monitor.shared.refreshProcesses() }
+    func popoverDidClose(_ notification: Notification) { Monitor.shared.popoverOpen = false }
 }
 
 // MARK: - Popover

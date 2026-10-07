@@ -1,5 +1,4 @@
 import SwiftUI
-import Charts
 
 func bytes(_ b: UInt64) -> String { ByteCountFormatter.string(fromByteCount: Int64(b), countStyle: .memory) }
 
@@ -32,25 +31,30 @@ enum Scale {
     }
 }
 
+/// Small graph for the sidebar and popover. Drawn straight onto a Canvas: a Swift Charts view per tile was the main cost of
+/// every tick, and these thumbnails don't need axes or interaction.
 struct Sparkline: View {
     let series: [Series]
     let scale: Scale
     var body: some View {
-        let top = scale.top(series)
-        Chart {
-            ForEach(series) { s in
-                ForEach(Array(s.data.enumerated()), id: \.offset) { i, v in
-                    if s.id == series.first?.id {
-                        AreaMark(x: .value("t", i), y: .value("v", v), series: .value("s", s.name)).interpolationMethod(.monotone)
-                            .foregroundStyle(LinearGradient(colors: [s.color.opacity(0.40), s.color.opacity(0.04)], startPoint: .top, endPoint: .bottom))
-                    }
-                    LineMark(x: .value("t", i), y: .value("v", v), series: .value("s", s.name)).interpolationMethod(.monotone)
-                        .foregroundStyle(s.color).lineStyle(StrokeStyle(lineWidth: 1.3, lineCap: .round, dash: s.dashed ? [2, 2] : []))
+        let top = max(scale.top(series), 1)
+        Canvas { ctx, size in
+            for (n, s) in series.enumerated() where s.data.count > 1 {
+                let step = size.width / CGFloat(s.data.count - 1)
+                var line = Path()
+                for (i, v) in s.data.enumerated() {
+                    let p = CGPoint(x: CGFloat(i) * step, y: size.height - CGFloat(min(max(v / top, 0), 1)) * size.height)
+                    if i == 0 { line.move(to: p) } else { line.addLine(to: p) }
                 }
+                if n == 0 {
+                    var area = line
+                    area.addLine(to: CGPoint(x: size.width, y: size.height)); area.addLine(to: CGPoint(x: 0, y: size.height)); area.closeSubpath()
+                    ctx.fill(area, with: .linearGradient(Gradient(colors: [s.color.opacity(0.40), s.color.opacity(0.04)]),
+                                                         startPoint: .zero, endPoint: CGPoint(x: 0, y: size.height)))
+                }
+                ctx.stroke(line, with: .color(s.color), style: StrokeStyle(lineWidth: 1.3, lineCap: .round, lineJoin: .round, dash: s.dashed ? [2, 2] : []))
             }
         }
-        .chartYScale(domain: 0...top).chartXScale(domain: 0...(Monitor.samples - 1))
-        .chartXAxis(.hidden).chartYAxis(.hidden)
         .background(series.first?.color.opacity(0.10) ?? .clear, in: RoundedRectangle(cornerRadius: 7))
         .clipShape(RoundedRectangle(cornerRadius: 7))
         .accessibilityHidden(true)      // the page announces the numbers; a thumbnail graph adds nothing for VoiceOver
@@ -140,40 +144,66 @@ struct ResourceDetail: View {
     }
 
     private func chart(top: Double) -> some View {
-        plot(top: top)
-            .accessibilityElement(children: .ignore)
-            .accessibilityLabel("\(title) over the last \(windowSeconds) seconds")
-            .accessibilityValue(summary)
-            .overlay(alignment: .bottomLeading) {
-                Text("Last \(windowSeconds) seconds").font(.system(size: ts(11))).foregroundStyle(.secondary).accessibilityHidden(true)
+        VStack(spacing: 6) {
+            plot(top: top)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("\(title) over the last \(windowSeconds) seconds")
+                .accessibilityValue(summary)
+            HStack {
+                Text("\(windowSeconds) seconds ago"); Spacer(); Text("Now")
             }
+            .font(.system(size: ts(11))).foregroundStyle(Color.secondary).padding(.trailing, ts(66)).accessibilityHidden(true)
+        }
     }
 
     private func plot(top: Double) -> some View {
-        Chart {
-            ForEach(series) { s in
-                ForEach(Array(s.data.enumerated()), id: \.offset) { i, v in
-                    if s.id == series.first?.id {
-                        AreaMark(x: .value("t", i), y: .value("v", v), series: .value("s", s.name)).interpolationMethod(.monotone)
-                            .foregroundStyle(LinearGradient(colors: [Color.metric(s.color).opacity(0.40), Color.metric(s.color).opacity(0.02)], startPoint: .top, endPoint: .bottom))
+        ResourceChart(series: series, top: top, label: { v in
+            if case .percent = scale { return "\(Int(v.rounded()))%" }
+            return v == 0 ? "0" : Rates.format(v)
+        })
+    }
+}
+
+/// The big graph: dashed grid at 0, 50 and 100 % of the axis, the series, and axis labels on the right. Drawn on a Canvas
+/// (a Swift Charts view re-laid out every second made this page cost more than the sampling it shows).
+struct ResourceChart: View {
+    let series: [Series]
+    let top: Double
+    let label: (Double) -> String
+    private let inset: CGFloat = 8
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Canvas { ctx, size in
+                let h = size.height - inset * 2
+                func y(_ f: CGFloat) -> CGFloat { inset + h * (1 - f) }
+                for f in [0.0, 0.5, 1.0] {
+                    var g = Path(); g.move(to: CGPoint(x: 0, y: y(f))); g.addLine(to: CGPoint(x: size.width, y: y(f)))
+                    ctx.stroke(g, with: .color(.secondary.opacity(0.45)), style: StrokeStyle(lineWidth: 0.5, dash: [3, 4]))
+                }
+                for (n, s) in series.enumerated() where s.data.count > 1 {
+                    let c = Color.metric(s.color)
+                    let step = size.width / CGFloat(s.data.count - 1)
+                    var line = Path()
+                    for (i, v) in s.data.enumerated() {
+                        let p = CGPoint(x: CGFloat(i) * step, y: y(CGFloat(min(max(v / max(top, 1), 0), 1))))
+                        if i == 0 { line.move(to: p) } else { line.addLine(to: p) }
                     }
-                    LineMark(x: .value("t", i), y: .value("v", v), series: .value("s", s.name)).interpolationMethod(.monotone)
-                        .foregroundStyle(Color.metric(s.color))
-                        .lineStyle(StrokeStyle(lineWidth: 2.2, lineCap: .round, lineJoin: .round, dash: s.dashed ? [5, 4] : []))
+                    if n == 0 {
+                        var area = line
+                        area.addLine(to: CGPoint(x: size.width, y: y(0))); area.addLine(to: CGPoint(x: 0, y: y(0))); area.closeSubpath()
+                        ctx.fill(area, with: .linearGradient(Gradient(colors: [c.opacity(0.40), c.opacity(0.02)]), startPoint: CGPoint(x: 0, y: inset), endPoint: CGPoint(x: 0, y: size.height)))
+                    }
+                    ctx.stroke(line, with: .color(c), style: StrokeStyle(lineWidth: 2.2, lineCap: .round, lineJoin: .round, dash: s.dashed ? [5, 4] : []))
                 }
             }
-        }
-        .chartYScale(domain: 0...top).chartXScale(domain: 0...(Monitor.samples - 1))
-        .chartXAxis(.hidden)
-        .chartYAxis {
-            AxisMarks(position: .trailing, values: [0, top / 2, top]) { v in
-                AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5, dash: [3, 4])).foregroundStyle(.tertiary)
-                AxisValueLabel {
-                    if let n = v.as(Double.self) {
-                        if case .percent = scale { Text("\(Int(n))%").font(.system(size: ts(10))) } else { Text(n == 0 ? "0" : Rates.format(n)).font(.system(size: ts(10))) }
-                    }
-                }.foregroundStyle(Color.secondary)
+            GeometryReader { g in
+                ForEach([0.0, 0.5, 1.0], id: \.self) { f in
+                    Text(label(top * f)).font(.system(size: ts(10))).foregroundStyle(Color.secondary)
+                        .position(x: g.size.width / 2, y: inset + (g.size.height - inset * 2) * (1 - f))
+                }
             }
+            .frame(width: ts(58))
         }
     }
 }
@@ -188,7 +218,7 @@ struct CPUDetail: View {
             Stat("Cores", "\(m.cores)"),
             Stat("Performance Cores", SystemInfo.performanceCores.map(String.init) ?? "–"),
             Stat("Efficiency Cores", SystemInfo.efficiencyCores.map(String.init) ?? "–"),
-            Stat("Processes", "\(m.procs.count)"),
+            Stat("Processes", "\(m.pidTotal)"),
             Stat("Thermal State", SystemInfo.thermal),
             Stat("Up Time", SystemInfo.uptime()),
         ])

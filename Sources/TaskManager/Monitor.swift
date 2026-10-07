@@ -52,26 +52,26 @@ enum Rates {
 final class Monitor: ObservableObject {
     static let shared = Monitor()
     static let samples = 60
-    @Published var procs: [Proc] = []
-    @Published var cpuHistory = [Double](repeating: 0, count: samples)
-    @Published var memHistory = [Double](repeating: 0, count: samples)
-    @Published var gpuHistory = [Double](repeating: 0, count: samples)
-    @Published var diskRead = [Double](repeating: 0, count: samples)    // bytes per second
-    @Published var diskWrite = [Double](repeating: 0, count: samples)
-    @Published var diskAvailable = true
-    @Published var interfaces: [NetInterface] = []
-    @Published var netRx: [String: [Double]] = [:]     // per BSD name, plus "all"
-    @Published var netTx: [String: [Double]] = [:]
-    @Published var memUsed: UInt64 = 0
-    @Published var memWired: UInt64 = 0
-    @Published var memCompressed: UInt64 = 0
-    @Published var gpuMemUsed: UInt64 = 0
-    @Published var gpuName = "GPU"
-    @Published var gpuCores: Int?
-    @Published var gpuAvailable = true
-    @Published var interval = 1.0
-    @Published var pidTotal = 0
-    @Published var pidReadable = 0
+    var procs: [Proc] = []
+    var cpuHistory = [Double](repeating: 0, count: samples)
+    var memHistory = [Double](repeating: 0, count: samples)
+    var gpuHistory = [Double](repeating: 0, count: samples)
+    var diskRead = [Double](repeating: 0, count: samples)    // bytes per second
+    var diskWrite = [Double](repeating: 0, count: samples)
+    var diskAvailable = true
+    var interfaces: [NetInterface] = []
+    var netRx: [String: [Double]] = [:]     // per BSD name, plus "all"
+    var netTx: [String: [Double]] = [:]
+    var memUsed: UInt64 = 0
+    var memWired: UInt64 = 0
+    var memCompressed: UInt64 = 0
+    var gpuMemUsed: UInt64 = 0
+    var gpuName = "GPU"
+    var gpuCores: Int?
+    var gpuAvailable = true
+    var interval = 1.0
+    var pidTotal = 0
+    var pidReadable = 0
     let memTotal = ProcessInfo.processInfo.physicalMemory
     let cores = ProcessInfo.processInfo.activeProcessorCount
     let cpuName: String = {
@@ -85,6 +85,9 @@ final class Monitor: ObservableObject {
     private var lastCPUTicks: (busy: Double, total: Double)?
     private var lastProcNs: [Int32: UInt64] = [:]
     private var lastProcDisk: [Int32: UInt64] = [:]
+    private struct Identity { let started: UInt64; let isApp: Bool; let icon: NSImage?; let name: String }
+    private var identities: [Int32: Identity] = [:]
+    private var gpuInfoRead = false
     private var lastDisk: (r: UInt64, w: UInt64)?
     private var lastNet: [String: (rx: UInt32, tx: UInt32)] = [:]
     private var lastSystemTime = DispatchTime.now().uptimeNanoseconds
@@ -111,6 +114,7 @@ final class Monitor: ObservableObject {
 
     func setInterval(_ seconds: Double) {
         interval = seconds
+        objectWillChange.send()
         schedule()
     }
 
@@ -121,14 +125,32 @@ final class Monitor: ObservableObject {
         }
     }
 
-    func tick() {
+    /// How many things currently show process data (the Processes page, the menu bar popover). Sampling every process is the
+    /// expensive part of a tick, so it only runs while somebody is looking; the cheap system graphs always run.
+    /// True while a window of this app is actually on screen (not minimized, hidden or fully covered).
+    private var windowVisible: Bool { NSApp.windows.contains { $0.isVisible && !$0.isMiniaturized && $0.occlusionState.contains(.visible) && $0.level == .normal } }
+    var processWatchers = 0
+    var popoverOpen = false
+
+    /// Called after every sample (the menu bar item refreshes its text from this).
+    var onTick: (() -> Void)?
+
+    /// The values below are plain properties rather than `@Published`: SwiftUI is told once per tick, and only while the
+    /// window is visible or the popover is open, so a minimized or hidden app costs almost nothing.
+    func tick(force: Bool = false) {
         sampleSystemIO()
         push(&cpuHistory, totalCPU())
         memUsed = usedMemory()
         push(&memHistory, Double(memUsed) / Double(memTotal) * 100)
         push(&gpuHistory, sampleGPU())
-        procs = sampleProcesses()
+        if force || popoverOpen || (processWatchers > 0 && windowVisible) { procs = sampleProcesses() }
+        else { pidTotal = Int(max(proc_listallpids(nil, 0), 0)) }
+        if force || popoverOpen || windowVisible { objectWillChange.send() }
+        onTick?()
     }
+
+    /// Samples the process list right now (used when a page that shows it appears, so it never starts out stale).
+    func refreshProcesses() { procs = sampleProcesses() }
 
     /// Whole-disk throughput (IOBlockStorageDriver counters) and per-interface network throughput (getifaddrs counters).
     private func sampleSystemIO() {
@@ -192,7 +214,8 @@ final class Monitor: ObservableObject {
         return found ? (r, w) : nil
     }
 
-    /// Reads utilisation from the IOAccelerator registry entry (Apple silicon and Intel/AMD).
+    /// Reads utilisation from the IOAccelerator registry entry (Apple silicon and Intel/AMD). Only the statistics are fetched
+    /// each time; the model name and core count are read once, since copying every property of the entry was the slowest part of a tick.
     private func sampleGPU() -> Double {
         var it: io_iterator_t = 0
         guard IOServiceGetMatchingServices(kIOMainPortDefault, IOServiceMatching("IOAccelerator"), &it) == KERN_SUCCESS else {
@@ -203,20 +226,23 @@ final class Monitor: ObservableObject {
         var service = IOIteratorNext(it)
         while service != 0 {
             defer { IOObjectRelease(service); service = IOIteratorNext(it) }
-            var props: Unmanaged<CFMutableDictionary>?
-            guard IORegistryEntryCreateCFProperties(service, &props, kCFAllocatorDefault, 0) == KERN_SUCCESS,
-                  let dict = props?.takeRetainedValue() as? [String: Any] else { continue }
-            if let model = dict["model"] as? String { gpuName = model }
-            else if let data = dict["model"] as? Data, let m = String(data: data, encoding: .utf8) {
-                gpuName = m.trimmingCharacters(in: CharacterSet(["\0"]))
-            }
-            if let c = dict["gpu-core-count"] as? Int { gpuCores = c }
-            guard let stats = dict["PerformanceStatistics"] as? [String: Any] else { continue }
+            if !gpuInfoRead { readGPUInfo(service) }
+            guard let stats = IORegistryEntryCreateCFProperty(service, "PerformanceStatistics" as CFString, kCFAllocatorDefault, 0)?
+                .takeRetainedValue() as? [String: Any] else { continue }
             let u = (stats["Device Utilization %"] as? NSNumber) ?? (stats["GPU Activity(%)"] as? NSNumber)
             usage = max(usage, u?.doubleValue ?? 0)
             if let m = stats["In use system memory"] as? NSNumber { gpuMemUsed = m.uint64Value }
         }
+        gpuInfoRead = true
         return usage
+    }
+
+    private func readGPUInfo(_ service: io_object_t) {
+        if let model = IORegistryEntryCreateCFProperty(service, "model" as CFString, kCFAllocatorDefault, 0)?.takeRetainedValue() {
+            if let m = model as? String { gpuName = m }
+            else if let data = model as? Data, let m = String(data: data, encoding: .utf8) { gpuName = m.trimmingCharacters(in: CharacterSet(["\0"])) }
+        }
+        if let c = IORegistryEntryCreateCFProperty(service, "gpu-core-count" as CFString, kCFAllocatorDefault, 0)?.takeRetainedValue() as? Int { gpuCores = c }
     }
 
     private func push(_ a: inout [Double], _ v: Double) { a.removeFirst(); a.append(v) }
@@ -259,11 +285,7 @@ final class Monitor: ObservableObject {
         let wall = Double(now - lastTime)
         lastTime = now
 
-        var apps: [Int32: NSRunningApplication] = [:]
-        for app in NSWorkspace.shared.runningApplications where app.activationPolicy == .regular {
-            apps[app.processIdentifier] = app
-        }
-
+        var seen = Set<Int32>()
         var pids = [Int32](repeating: 0, count: Int(proc_listallpids(nil, 0)) + 64)
         let n = Int(proc_listallpids(&pids, Int32(pids.count * MemoryLayout<Int32>.size)))
         var ns: [Int32: UInt64] = [:]
@@ -290,13 +312,23 @@ final class Monitor: ObservableObject {
             let io = rok ? ri.ri_diskio_bytesread + ri.ri_diskio_byteswritten : 0
             diskBytes[pid] = io
             let diskRate = Rates.sane(lastProcDisk[pid].map { io >= $0 ? Double(io - $0) / (wall / 1e9) : 0 } ?? 0)
-            let name = apps[pid]?.localizedName ?? (proc_name(pid, &nameBuf, 256) > 0 ? String(cString: nameBuf) : "pid \(pid)")
-            out.append(Proc(id: pid, name: name, isApp: apps[pid] != nil, cpu: cpu, mem: ti.pti_resident_size, started: started, icon: apps[pid]?.icon,
+            // Name, icon and app-ness never change for a running process, and asking AppKit for them is the costly part of a
+            // sample, so look them up once per process (a reused pid has a different start time and is looked up again).
+            let info: Identity
+            if let c = identities[pid], c.started == started { info = c } else {
+                let app = NSRunningApplication(processIdentifier: pid).flatMap { $0.activationPolicy == .regular ? $0 : nil }
+                info = Identity(started: started, isApp: app != nil, icon: app?.icon,
+                                name: app?.localizedName ?? (proc_name(pid, &nameBuf, 256) > 0 ? String(cString: nameBuf) : "pid \(pid)"))
+                identities[pid] = info
+            }
+            seen.insert(pid)
+            out.append(Proc(id: pid, name: info.name, isApp: info.isApp, cpu: cpu, mem: ti.pti_resident_size, started: started, icon: info.icon,
                             ppid: Int32(bitPattern: bsd.pbi_ppid), user: userName(bsd.pbi_uid), threads: ti.pti_threadnum,
                             state: Rates.stateName(bsd.pbi_status), disk: diskRate))
         }
         lastProcNs = ns
         lastProcDisk = diskBytes
+        if identities.count > seen.count { identities = identities.filter { seen.contains($0.key) } }
         pidTotal = max(n, 0)
         pidReadable = out.count
         return out

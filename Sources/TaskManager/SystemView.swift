@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct SystemView: View {
-    @EnvironmentObject var m: Monitor
+    private var m: Monitor { Monitor.shared }      // static facts only, so this page needn't redraw every second
     @EnvironmentObject var settings: AppSettings
 
     var body: some View {

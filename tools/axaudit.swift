@@ -27,7 +27,9 @@ func walk(_ e: AXUIElement, _ depth: Int) {
     }
     if let kids = attr(e, "AXChildren") as? [AXUIElement] { for k in kids { walk(k, depth + 1) } }
 }
-guard let app = NSWorkspace.shared.runningApplications.first(where: { $0.bundleIdentifier == "io.github.ol775.taskmanager" }) else { print("not running"); exit(1) }
+// PID=<pid> picks one copy when several are running (the installed app and a build); otherwise the first one found.
+let wantPID = Int32(ProcessInfo.processInfo.environment["PID"] ?? "")
+guard let app = NSWorkspace.shared.runningApplications.first(where: { $0.bundleIdentifier == "io.github.ol775.taskmanager" && (wantPID == nil || $0.processIdentifier == wantPID) }) else { print("not running"); exit(1) }
 let ax = AXUIElementCreateApplication(app.processIdentifier)
 guard let wins = attr(ax, "AXWindows") as? [AXUIElement] else { print("no windows (is Accessibility allowed for this terminal?)"); exit(1) }
 for w in wins { walk(w, 0) }
