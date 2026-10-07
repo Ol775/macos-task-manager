@@ -1,6 +1,6 @@
 #!/bin/zsh
 # Publishes the current VERSION: builds the universal DMG, signs it with the release key and creates the GitHub release
-# (DMG + .sha256 + .sig2). Run after ./bump.sh, a build, and pushing the commit.
+# (DMG + .sha256 + .sig2) and updates the Homebrew cask. Run after ./bump.sh, a build, and pushing the commit.
 # Usage: ./release.sh "short release note"
 # The signing key (never committed, back it up!) lives at ~/.config/taskmanager/signing.key; its public half is built into the app.
 set -e
@@ -17,4 +17,11 @@ mkdir -p build && swiftc -O tools/sign-tool.swift -o build/sign-tool 2>/dev/null
 dmg="dist/Task-Manager-$ver.dmg"
 build/sign-tool sign-update "$key" "$dmg" "$ver" > "$dmg.sig2"
 gh release create "v$ver" "$dmg" "$dmg.sha256" "$dmg.sig2" --repo Ol775/macos-task-manager --title "v$ver" --notes "$note" --latest
+# Homebrew tap: point the cask at the new release (clones the tap into build/ if TAP_DIR isn't set).
+tap="${TAP_DIR:-build/homebrew-tap}"
+[ -d "$tap/.git" ] || git clone -q https://github.com/Ol775/homebrew-tap "$tap"
+git -C "$tap" pull -q --ff-only origin main
+sha=$(cut -d' ' -f1 "$dmg.sha256")
+sed -i '' -e "s/^  version \".*\"/  version \"$ver\"/" -e "s/^  sha256 \".*\"/  sha256 \"$sha\"/" "$tap/Casks/task-manager.rb"
+git -C "$tap" add -A && git -C "$tap" commit -q -m "task-manager $ver" && git -C "$tap" push -q origin main && echo "Homebrew tap updated to $ver"
 echo "Released v$ver"
