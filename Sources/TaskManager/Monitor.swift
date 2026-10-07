@@ -23,6 +23,9 @@ final class Monitor: ObservableObject {
     @Published var gpuName = "GPU"
     @Published var gpuCores: Int?
     @Published var gpuAvailable = true
+    @Published var interval = 1.0
+    @Published var pidTotal = 0
+    @Published var pidReadable = 0
     let memTotal = ProcessInfo.processInfo.physicalMemory
     let cores = ProcessInfo.processInfo.activeProcessorCount
     let cpuName: String = {
@@ -41,10 +44,21 @@ final class Monitor: ObservableObject {
         var t = mach_timebase_info_data_t(); mach_timebase_info(&t); return t
     }()
 
-    func start() {
+    func start(interval: Double) {
         guard timer == nil else { return }
+        self.interval = interval
         tick()
-        timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
+        schedule()
+    }
+
+    func setInterval(_ seconds: Double) {
+        interval = seconds
+        schedule()
+    }
+
+    private func schedule() {
+        timer?.invalidate()
+        timer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.tick() }
         }
     }
@@ -145,6 +159,8 @@ final class Monitor: ObservableObject {
             out.append(Proc(id: pid, name: name, isApp: apps[pid] != nil, cpu: cpu, mem: ti.pti_resident_size, icon: apps[pid]?.icon))
         }
         lastProcNs = ns
+        pidTotal = max(n, 0)
+        pidReadable = out.count
         return out
     }
 }

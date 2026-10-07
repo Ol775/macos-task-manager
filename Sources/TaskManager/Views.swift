@@ -5,16 +5,25 @@ private func bytes(_ b: UInt64) -> String { ByteCountFormatter.string(fromByteCo
 
 // MARK: Processes
 
+@MainActor func endTask(_ pid: Int32) {
+    guard kill(pid, SIGTERM) != 0 else { return }
+    let e = errno
+    let a = NSAlert()
+    a.messageText = e == EPERM ? "Not permitted" : "Couldn't end task"
+    a.informativeText = e == EPERM ? "macOS only lets you end your own processes." : String(cString: strerror(e))
+    a.runModal()
+}
+
 struct ProcessesView: View {
     @EnvironmentObject var m: Monitor
-    @State private var appsOnly = true
-    @State private var search = ""
+    @EnvironmentObject var settings: AppSettings
+        @State private var search = ""
     @State private var selection: Int32?
     @State private var order = [KeyPathComparator(\Proc.cpu, order: .reverse)]
 
     private var rows: [Proc] {
         m.procs
-            .filter { (!appsOnly || $0.isApp) && (search.isEmpty || $0.name.localizedCaseInsensitiveContains(search)) }
+            .filter { (!settings.appsOnly || $0.isApp) && (search.isEmpty || $0.name.localizedCaseInsensitiveContains(search)) }
             .sorted(using: order)
     }
 
@@ -37,19 +46,19 @@ struct ProcessesView: View {
                 .width(min: 50, ideal: 70, max: 90)
         }
         .contextMenu(forSelectionType: Int32.self) { ids in
-            Button("End Task", role: .destructive) { ids.forEach { kill($0, SIGTERM) } }
+            Button("End Task", role: .destructive) { ids.forEach(endTask) }
         }
         .navigationTitle("Processes")
-        .navigationSubtitle("\(rows.count) \(appsOnly ? "apps" : "processes")")
+        .navigationSubtitle("\(rows.count) \(settings.appsOnly ? "apps" : "processes")")
         .searchable(text: $search, placement: .toolbar, prompt: "Search")
         .toolbar {
             ToolbarItem {
-                Picker("Show", selection: $appsOnly) {
+                Picker("Show", selection: $settings.appsOnly) {
                     Text("Apps").tag(true); Text("All Processes").tag(false)
                 }.pickerStyle(.segmented)
             }
             ToolbarItem {
-                Button { if let pid = selection { kill(pid, SIGTERM) } } label: {
+                Button { if let pid = selection { endTask(pid) } } label: {
                     Label("End Task", systemImage: "xmark.circle")
                 }
                 .help("End the selected task").disabled(selection == nil)
@@ -84,6 +93,7 @@ struct Sparkline: View {
 }
 
 struct ResourceDetail: View {
+    @EnvironmentObject var monitor: Monitor
     let title, subtitle: String
     let color: Color
     let data: [Double]
@@ -119,7 +129,7 @@ struct ResourceDetail: View {
                 .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 14))
                 .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color(nsColor: .separatorColor).opacity(0.6)))
                 .overlay(alignment: .bottomLeading) {
-                    Text("Last \(Monitor.samples) seconds").font(.system(size: 10)).foregroundStyle(.tertiary)
+                    Text("Last \(Int(Double(Monitor.samples) * monitor.interval)) seconds").font(.system(size: 10)).foregroundStyle(.tertiary)
                         .padding(.leading, 18).padding(.bottom, 6)
                 }
 
@@ -144,8 +154,9 @@ struct ResourceDetail: View {
 
 struct CPUDetail: View {
     @EnvironmentObject var m: Monitor
+    @EnvironmentObject var s: AppSettings
     var body: some View {
-        ResourceDetail(title: "CPU", subtitle: m.cpuName, color: Palette.cpu, data: m.cpuHistory, stats: [
+        ResourceDetail(title: "CPU", subtitle: m.cpuName, color: s.cpuColor, data: m.cpuHistory, stats: [
             Stat("Cores", "\(m.cores)"),
             Stat("Processes", "\(m.procs.count)"),
             Stat("Up Time", uptime()),
@@ -159,8 +170,9 @@ struct CPUDetail: View {
 
 struct MemoryDetail: View {
     @EnvironmentObject var m: Monitor
+    @EnvironmentObject var s: AppSettings
     var body: some View {
-        ResourceDetail(title: "Memory", subtitle: bytes(m.memTotal) + " installed", color: Palette.memory, data: m.memHistory, stats: [
+        ResourceDetail(title: "Memory", subtitle: bytes(m.memTotal) + " installed", color: s.memoryColor, data: m.memHistory, stats: [
             Stat("In Use", bytes(m.memUsed)),
             Stat("Available", bytes(m.memTotal - min(m.memUsed, m.memTotal))),
             Stat("Installed", bytes(m.memTotal)),
@@ -170,8 +182,9 @@ struct MemoryDetail: View {
 
 struct GPUDetail: View {
     @EnvironmentObject var m: Monitor
+    @EnvironmentObject var s: AppSettings
     var body: some View {
-        ResourceDetail(title: "GPU", subtitle: m.gpuName, color: Palette.gpu, data: m.gpuHistory, stats: [
+        ResourceDetail(title: "GPU", subtitle: m.gpuName, color: s.gpuColor, data: m.gpuHistory, stats: [
             Stat("Cores", m.gpuCores.map(String.init) ?? "–"),
             Stat("Memory In Use", bytes(m.gpuMemUsed)),
         ])

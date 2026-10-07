@@ -3,27 +3,29 @@ import SwiftUI
 @main
 struct TaskManagerApp: App {
     @StateObject private var monitor = Monitor()
+    @StateObject private var settings = AppSettings()
     var body: some Scene {
         WindowGroup("Task Manager") {
             ContentView()
                 .environmentObject(monitor)
-                .onAppear { monitor.start() }
+                .environmentObject(settings)
+                .onAppear { settings.apply(); monitor.start(interval: settings.interval) }
+                .onChange(of: settings.interval) { _, v in monitor.setInterval(v) }
         }
         .defaultSize(width: 1020, height: 680)
         .windowToolbarStyle(.unified)
+
+        Settings {
+            SettingsView().environmentObject(monitor).environmentObject(settings)
+        }
     }
 }
 
 enum Item: Hashable { case processes, cpu, memory, gpu }
 
-enum Palette {
-    static let cpu = Color.blue
-    static let memory = Color.purple
-    static let gpu = Color.orange
-}
-
 struct ContentView: View {
     @EnvironmentObject var m: Monitor
+    @EnvironmentObject var s: AppSettings
     @State private var item: Item? = .processes
 
     var body: some View {
@@ -32,9 +34,9 @@ struct ContentView: View {
                 Label("Processes", systemImage: "list.bullet.rectangle")
                     .tag(Item.processes)
                 Section("Performance") {
-                    tile(.cpu, "CPU", Palette.cpu, m.cpuHistory)
-                    tile(.memory, "Memory", Palette.memory, m.memHistory)
-                    if m.gpuAvailable { tile(.gpu, "GPU", Palette.gpu, m.gpuHistory) }
+                    tile(.cpu, "CPU", s.cpuColor, m.cpuHistory)
+                    tile(.memory, "Memory", s.memoryColor, m.memHistory)
+                    if m.gpuAvailable { tile(.gpu, "GPU", s.gpuColor, m.gpuHistory) }
                 }
             }
             .navigationSplitViewColumnWidth(min: 210, ideal: 240, max: 300)
