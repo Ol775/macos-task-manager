@@ -1,5 +1,8 @@
-# macos-task-manager
+# Tasks
 
-An elegant, native macOS task manager.
+A simple, elegant, local-only macOS to-do app. SwiftUI + SwiftData, macOS 14+.
 
-**Status:** just started. Stack and feature scope still to be decided.
+## Build
+Needs full Xcode (SwiftData's `@Model` macro isn't in the Command Line Tools):
+
+    ./build-app.sh && open Tasks.app
