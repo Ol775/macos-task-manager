@@ -4,93 +4,72 @@ import SwiftUI
 struct TaskManagerApp: App {
     @StateObject private var monitor = Monitor()
     var body: some Scene {
-        WindowGroup {
+        WindowGroup("Task Manager") {
             ContentView()
                 .environmentObject(monitor)
                 .onAppear { monitor.start() }
-                .containerBackground(.regularMaterial, for: .window)
         }
-        .windowStyle(.hiddenTitleBar)
-        .defaultSize(width: 980, height: 640)
+        .defaultSize(width: 1000, height: 660)
     }
 }
 
-enum Section: Hashable { case processes, cpu, memory, gpu }
+enum Page { case processes, performance }
+enum Resource { case cpu, memory, gpu }
 
 enum Palette {
-    static let cpu = Color(red: 0.30, green: 0.58, blue: 1.00)
-    static let memory = Color(red: 0.36, green: 0.82, blue: 0.62)
-    static let gpu = Color(red: 1.00, green: 0.60, blue: 0.30)
+    static let cpu = Color(red: 0.07, green: 0.49, blue: 0.73)
+    static let memory = Color(red: 0.55, green: 0.07, blue: 0.68)
+    static let gpu = Color(red: 0.00, green: 0.62, blue: 0.62)
+
+    /// Windows-style usage heat: pale yellow to deep orange.
+    static func heat(_ v: Double) -> Color {
+        let v = min(max(v, 0), 1)
+        return Color(red: 1, green: 0.80 - 0.42 * v, blue: 0.20 - 0.10 * v).opacity(0.10 + 0.60 * v)
+    }
 }
 
 struct ContentView: View {
-    @State private var section = Section.processes
+    @State private var page = Page.processes
 
     var body: some View {
         HStack(spacing: 0) {
-            Sidebar(section: $section).frame(width: 232)
-            Divider().opacity(0.4)
-            Group {
-                switch section {
-                case .processes: ProcessesView()
-                case .cpu: CPUDetail()
-                case .memory: MemoryDetail()
-                case .gpu: GPUDetail()
-                }
+            NavRail(page: $page)
+            Divider()
+            switch page {
+            case .processes: ProcessesView()
+            case .performance: PerformanceView()
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .frame(minWidth: 820, minHeight: 540)
+        .frame(minWidth: 860, minHeight: 540)
+        .background(Color(nsColor: .windowBackgroundColor))
     }
 }
 
-// MARK: Sidebar
-
-struct Sidebar: View {
-    @EnvironmentObject var m: Monitor
-    @Binding var section: Section
-
+struct NavRail: View {
+    @Binding var page: Page
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("Task Manager")
-                .font(.system(size: 13, weight: .semibold)).foregroundStyle(.secondary)
-                .padding(.leading, 12).padding(.top, 38).padding(.bottom, 8)
-            row(.processes) {
-                Label("Processes", systemImage: "list.bullet.rectangle").font(.system(size: 13, weight: .medium))
-                    .padding(.vertical, 4)
-            }
-            Text("PERFORMANCE")
-                .font(.system(size: 10, weight: .semibold)).foregroundStyle(.tertiary)
-                .padding(.leading, 12).padding(.top, 14).padding(.bottom, 2)
-            tile(.cpu, "CPU", Palette.cpu, m.cpuHistory)
-            tile(.memory, "Memory", Palette.memory, m.memHistory)
-            if m.gpuAvailable { tile(.gpu, "GPU", Palette.gpu, m.gpuHistory) }
+        VStack(spacing: 4) {
+            item(.processes, "list.bullet", "Processes")
+            item(.performance, "chart.xyaxis.line", "Performance")
             Spacer()
         }
-        .padding(.horizontal, 10)
+        .padding(.top, 10).padding(.horizontal, 6)
+        .frame(width: 54)
+        .background(Color(nsColor: .controlBackgroundColor))
     }
 
-    private func tile(_ s: Section, _ title: String, _ color: Color, _ data: [Double]) -> some View {
-        row(s) {
-            HStack(spacing: 10) {
-                Sparkline(data: data, color: color).frame(width: 54, height: 34)
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(title).font(.system(size: 13, weight: .medium))
-                    Text(String(format: "%.0f%%", data.last ?? 0))
-                        .font(.system(size: 12)).monospacedDigit().foregroundStyle(.secondary)
+    private func item(_ p: Page, _ icon: String, _ help: String) -> some View {
+        Button { page = p } label: {
+            Image(systemName: icon).font(.system(size: 16))
+                .frame(width: 42, height: 40)
+                .background(page == p ? Color.primary.opacity(0.09) : .clear, in: RoundedRectangle(cornerRadius: 6))
+                .overlay(alignment: .leading) {
+                    if page == p {
+                        Capsule().fill(Color.accentColor).frame(width: 3, height: 16).offset(x: -2)
+                    }
                 }
-                Spacer(minLength: 0)
-            }
-        }
-    }
-
-    private func row<C: View>(_ s: Section, @ViewBuilder _ content: () -> C) -> some View {
-        Button { section = s } label: {
-            content().padding(.horizontal, 10).padding(.vertical, 6)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(section == s ? Color.primary.opacity(0.10) : .clear, in: RoundedRectangle(cornerRadius: 8))
                 .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.plain).help(help)
     }
 }

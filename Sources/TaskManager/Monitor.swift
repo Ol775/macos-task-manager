@@ -6,7 +6,7 @@ struct Proc: Identifiable {
     let id: Int32
     let name: String
     let isApp: Bool
-    var cpu: Double      // percent of one core, like Activity Monitor
+    var cpu: Double      // percent of total CPU capacity, like Windows
     var mem: UInt64      // resident bytes
     var icon: NSImage?
 }
@@ -140,7 +140,7 @@ final class Monitor: ObservableObject {
             let abs = ti.pti_total_user + ti.pti_total_system
             let cpuNs = abs * UInt64(timebase.numer) / UInt64(timebase.denom)
             ns[pid] = cpuNs
-            let cpu = lastProcNs[pid].map { cpuNs >= $0 ? Double(cpuNs - $0) / wall * 100 : 0 } ?? 0
+            let cpu = lastProcNs[pid].map { cpuNs >= $0 ? Double(cpuNs - $0) / wall * 100 / Double(cores) : 0 } ?? 0
             let name = apps[pid]?.localizedName ?? (proc_name(pid, &nameBuf, 256) > 0 ? String(cString: nameBuf) : "pid \(pid)")
             out.append(Proc(id: pid, name: name, isApp: apps[pid] != nil, cpu: cpu, mem: ti.pti_resident_size, icon: apps[pid]?.icon))
         }
