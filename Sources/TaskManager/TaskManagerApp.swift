@@ -1,5 +1,4 @@
 import SwiftUI
-import Charts
 
 @main
 struct TaskManagerApp: App {
@@ -9,107 +8,89 @@ struct TaskManagerApp: App {
             ContentView()
                 .environmentObject(monitor)
                 .onAppear { monitor.start() }
+                .containerBackground(.regularMaterial, for: .window)
         }
-        .defaultSize(width: 760, height: 560)
+        .windowStyle(.hiddenTitleBar)
+        .defaultSize(width: 980, height: 640)
     }
+}
+
+enum Section: Hashable { case processes, cpu, memory, gpu }
+
+enum Palette {
+    static let cpu = Color(red: 0.30, green: 0.58, blue: 1.00)
+    static let memory = Color(red: 0.36, green: 0.82, blue: 0.62)
+    static let gpu = Color(red: 1.00, green: 0.60, blue: 0.30)
 }
 
 struct ContentView: View {
-    @State private var tab = Tab.processes
-    enum Tab: String, CaseIterable { case processes = "Processes", performance = "Performance" }
+    @State private var section = Section.processes
 
     var body: some View {
-        VStack(spacing: 0) {
-            Picker("", selection: $tab) {
-                ForEach(Tab.allCases, id: \.self) { Text($0.rawValue).tag($0) }
+        HStack(spacing: 0) {
+            Sidebar(section: $section).frame(width: 232)
+            Divider().opacity(0.4)
+            Group {
+                switch section {
+                case .processes: ProcessesView()
+                case .cpu: CPUDetail()
+                case .memory: MemoryDetail()
+                case .gpu: GPUDetail()
+                }
             }
-            .pickerStyle(.segmented).labelsHidden().frame(width: 260).padding(12)
-            switch tab {
-            case .processes: ProcessesView()
-            case .performance: PerformanceView()
-            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .frame(minWidth: 560, minHeight: 400)
+        .frame(minWidth: 820, minHeight: 540)
     }
 }
 
-struct ProcessesView: View {
-    @EnvironmentObject var monitor: Monitor
-    @State private var appsOnly = true
-    @State private var search = ""
-    @State private var selection: Int32?
-    @State private var order = [KeyPathComparator(\Proc.cpu, order: .reverse)]
+// MARK: Sidebar
 
-    private var rows: [Proc] {
-        monitor.procs
-            .filter { (!appsOnly || $0.isApp) && (search.isEmpty || $0.name.localizedCaseInsensitiveContains(search)) }
-            .sorted(using: order)
-    }
+struct Sidebar: View {
+    @EnvironmentObject var m: Monitor
+    @Binding var section: Section
 
     var body: some View {
-        VStack(spacing: 8) {
-            HStack {
-                Picker("", selection: $appsOnly) {
-                    Text("Apps").tag(true); Text("All processes").tag(false)
-                }.pickerStyle(.segmented).labelsHidden().frame(width: 200)
-                TextField("Search", text: $search).textFieldStyle(.roundedBorder).frame(maxWidth: 200)
-                Spacer()
-                Button("End Task") { if let pid = selection { kill(pid, SIGTERM) } }
-                    .disabled(selection == nil)
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Task Manager")
+                .font(.system(size: 13, weight: .semibold)).foregroundStyle(.secondary)
+                .padding(.leading, 12).padding(.top, 38).padding(.bottom, 8)
+            row(.processes) {
+                Label("Processes", systemImage: "list.bullet.rectangle").font(.system(size: 13, weight: .medium))
+                    .padding(.vertical, 4)
             }
-            .padding(.horizontal, 12)
-            Table(rows, selection: $selection, sortOrder: $order) {
-                TableColumn("Name", value: \.name)
-                TableColumn("PID", value: \.id) { Text(String($0.id)).monospacedDigit() }.width(60)
-                TableColumn("CPU", value: \.cpu) { Text(String(format: "%.1f%%", $0.cpu)).monospacedDigit() }.width(70)
-                TableColumn("Memory", value: \.mem) {
-                    Text(ByteCountFormatter.string(fromByteCount: Int64($0.mem), countStyle: .memory)).monospacedDigit()
-                }.width(90)
+            Text("PERFORMANCE")
+                .font(.system(size: 10, weight: .semibold)).foregroundStyle(.tertiary)
+                .padding(.leading, 12).padding(.top, 14).padding(.bottom, 2)
+            tile(.cpu, "CPU", Palette.cpu, m.cpuHistory)
+            tile(.memory, "Memory", Palette.memory, m.memHistory)
+            if m.gpuAvailable { tile(.gpu, "GPU", Palette.gpu, m.gpuHistory) }
+            Spacer()
+        }
+        .padding(.horizontal, 10)
+    }
+
+    private func tile(_ s: Section, _ title: String, _ color: Color, _ data: [Double]) -> some View {
+        row(s) {
+            HStack(spacing: 10) {
+                Sparkline(data: data, color: color).frame(width: 54, height: 34)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(title).font(.system(size: 13, weight: .medium))
+                    Text(String(format: "%.0f%%", data.last ?? 0))
+                        .font(.system(size: 12)).monospacedDigit().foregroundStyle(.secondary)
+                }
+                Spacer(minLength: 0)
             }
         }
     }
-}
 
-struct PerformanceView: View {
-    @EnvironmentObject var monitor: Monitor
-
-    var body: some View {
-        ScrollView {
-            VStack(spacing: 16) {
-                GraphCard(title: "CPU", value: String(format: "%.0f%%", monitor.cpuHistory.last ?? 0),
-                          detail: "\(monitor.cores) cores", data: monitor.cpuHistory, color: .blue)
-                GraphCard(title: "Memory",
-                          value: ByteCountFormatter.string(fromByteCount: Int64(monitor.memUsed), countStyle: .memory),
-                          detail: "of " + ByteCountFormatter.string(fromByteCount: Int64(monitor.memTotal), countStyle: .memory),
-                          data: monitor.memHistory, color: .purple)
-            }
-            .padding(16)
+    private func row<C: View>(_ s: Section, @ViewBuilder _ content: () -> C) -> some View {
+        Button { section = s } label: {
+            content().padding(.horizontal, 10).padding(.vertical, 6)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(section == s ? Color.primary.opacity(0.10) : .clear, in: RoundedRectangle(cornerRadius: 8))
+                .contentShape(Rectangle())
         }
-    }
-}
-
-struct GraphCard: View {
-    let title, value, detail: String
-    let data: [Double]
-    let color: Color
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .firstTextBaseline) {
-                Text(title).font(.headline)
-                Spacer()
-                Text(value).font(.system(size: 24, weight: .semibold, design: .rounded)).monospacedDigit()
-                Text(detail).foregroundStyle(.secondary)
-            }
-            Chart(Array(data.enumerated()), id: \.offset) { i, v in
-                AreaMark(x: .value("t", i), y: .value("%", v)).foregroundStyle(color.opacity(0.25))
-                LineMark(x: .value("t", i), y: .value("%", v)).foregroundStyle(color)
-            }
-            .chartYScale(domain: 0...100)
-            .chartXAxis(.hidden)
-            .frame(height: 140)
-        }
-        .padding(14)
-        .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 12))
+        .buttonStyle(.plain)
     }
 }

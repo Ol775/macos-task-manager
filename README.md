@@ -1,6 +1,6 @@
 # TaskManager
 
-A Windows-style task manager for macOS: live CPU and memory graphs, running apps and processes, End Task. SwiftUI + Swift Charts, macOS 14+.
+A Windows-style task manager for macOS: live CPU, memory and GPU graphs, running apps and processes, End Task. SwiftUI + Swift Charts, macOS 15+.
 
     ./build-app.sh && open TaskManager.app
 

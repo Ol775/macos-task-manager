@@ -1,5 +1,6 @@
 import AppKit
 import Darwin
+import IOKit
 
 struct Proc: Identifiable {
     let id: Int32
@@ -7,6 +8,7 @@ struct Proc: Identifiable {
     let isApp: Bool
     var cpu: Double      // percent of one core, like Activity Monitor
     var mem: UInt64      // resident bytes
+    var icon: NSImage?
 }
 
 @MainActor
@@ -15,9 +17,21 @@ final class Monitor: ObservableObject {
     @Published var procs: [Proc] = []
     @Published var cpuHistory = [Double](repeating: 0, count: samples)
     @Published var memHistory = [Double](repeating: 0, count: samples)
+    @Published var gpuHistory = [Double](repeating: 0, count: samples)
     @Published var memUsed: UInt64 = 0
+    @Published var gpuMemUsed: UInt64 = 0
+    @Published var gpuName = "GPU"
+    @Published var gpuCores: Int?
+    @Published var gpuAvailable = true
     let memTotal = ProcessInfo.processInfo.physicalMemory
     let cores = ProcessInfo.processInfo.activeProcessorCount
+    let cpuName: String = {
+        var size = 0
+        sysctlbyname("machdep.cpu.brand_string", nil, &size, nil, 0)
+        var buf = [CChar](repeating: 0, count: max(size, 1))
+        sysctlbyname("machdep.cpu.brand_string", &buf, &size, nil, 0)
+        return String(cString: buf)
+    }()
 
     private var lastCPUTicks: (busy: Double, total: Double)?
     private var lastProcNs: [Int32: UInt64] = [:]
@@ -39,7 +53,35 @@ final class Monitor: ObservableObject {
         push(&cpuHistory, totalCPU())
         memUsed = usedMemory()
         push(&memHistory, Double(memUsed) / Double(memTotal) * 100)
+        push(&gpuHistory, sampleGPU())
         procs = sampleProcesses()
+    }
+
+    /// Reads utilisation from the IOAccelerator registry entry (Apple silicon and Intel/AMD).
+    private func sampleGPU() -> Double {
+        var it: io_iterator_t = 0
+        guard IOServiceGetMatchingServices(kIOMainPortDefault, IOServiceMatching("IOAccelerator"), &it) == KERN_SUCCESS else {
+            gpuAvailable = false; return 0
+        }
+        defer { IOObjectRelease(it) }
+        var usage = 0.0
+        var service = IOIteratorNext(it)
+        while service != 0 {
+            defer { IOObjectRelease(service); service = IOIteratorNext(it) }
+            var props: Unmanaged<CFMutableDictionary>?
+            guard IORegistryEntryCreateCFProperties(service, &props, kCFAllocatorDefault, 0) == KERN_SUCCESS,
+                  let dict = props?.takeRetainedValue() as? [String: Any] else { continue }
+            if let model = dict["model"] as? String { gpuName = model }
+            else if let data = dict["model"] as? Data, let m = String(data: data, encoding: .utf8) {
+                gpuName = m.trimmingCharacters(in: CharacterSet(["\0"]))
+            }
+            if let c = dict["gpu-core-count"] as? Int { gpuCores = c }
+            guard let stats = dict["PerformanceStatistics"] as? [String: Any] else { continue }
+            let u = (stats["Device Utilization %"] as? NSNumber) ?? (stats["GPU Activity(%)"] as? NSNumber)
+            usage = max(usage, u?.doubleValue ?? 0)
+            if let m = stats["In use system memory"] as? NSNumber { gpuMemUsed = m.uint64Value }
+        }
+        return usage
     }
 
     private func push(_ a: inout [Double], _ v: Double) { a.removeFirst(); a.append(v) }
@@ -79,9 +121,9 @@ final class Monitor: ObservableObject {
         let wall = Double(now - lastTime)
         lastTime = now
 
-        var apps: [Int32: String] = [:]
+        var apps: [Int32: NSRunningApplication] = [:]
         for app in NSWorkspace.shared.runningApplications where app.activationPolicy == .regular {
-            apps[app.processIdentifier] = app.localizedName ?? "App"
+            apps[app.processIdentifier] = app
         }
 
         var pids = [Int32](repeating: 0, count: Int(proc_listallpids(nil, 0)) + 64)
@@ -99,8 +141,8 @@ final class Monitor: ObservableObject {
             let cpuNs = abs * UInt64(timebase.numer) / UInt64(timebase.denom)
             ns[pid] = cpuNs
             let cpu = lastProcNs[pid].map { cpuNs >= $0 ? Double(cpuNs - $0) / wall * 100 : 0 } ?? 0
-            let name = apps[pid] ?? (proc_name(pid, &nameBuf, 256) > 0 ? String(cString: nameBuf) : "pid \(pid)")
-            out.append(Proc(id: pid, name: name, isApp: apps[pid] != nil, cpu: cpu, mem: ti.pti_resident_size))
+            let name = apps[pid]?.localizedName ?? (proc_name(pid, &nameBuf, 256) > 0 ? String(cString: nameBuf) : "pid \(pid)")
+            out.append(Proc(id: pid, name: name, isApp: apps[pid] != nil, cpu: cpu, mem: ti.pti_resident_size, icon: apps[pid]?.icon))
         }
         lastProcNs = ns
         return out
