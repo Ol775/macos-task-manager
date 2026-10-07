@@ -81,6 +81,7 @@ struct ContentView: View {
     @EnvironmentObject var updates: UpdateModel
     @Environment(\.openWindow) private var openWindow
     @EnvironmentObject var nav: Nav
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     private var item: Item { nav.item }
 
     private var pages: [Item] {
@@ -91,7 +92,7 @@ struct ContentView: View {
         let narrow = s.sidebarCollapsed
         HStack(spacing: 0) {
             sidebar(narrow: narrow)
-                .frame(width: narrow ? 68 : 232).frame(maxHeight: .infinity)
+                .frame(width: narrow ? ts(68) : ts(232)).frame(maxHeight: .infinity)
                 .background(s.oled ? Color.black : Color(nsColor: .controlBackgroundColor).opacity(0.6))
             Divider()
             Group {
@@ -112,6 +113,7 @@ struct ContentView: View {
         .tint(s.accent)
         .id(s.themeKey)
         .frame(minWidth: 1040, minHeight: 560)
+        .font(.system(size: ts(13)))
         .background(OLEDWindow(on: s.oled))
         .onAppear {
             if s.autoUpdate { updates.check() }
@@ -121,15 +123,16 @@ struct ContentView: View {
 
     private func sidebar(narrow: Bool) -> some View {
         VStack(alignment: .leading, spacing: 4) {
-            Button { withAnimation(.easeInOut(duration: 0.2)) { s.sidebarCollapsed.toggle() } } label: {
-                Image(systemName: "sidebar.left").font(.system(size: 16)).foregroundStyle(.secondary).frame(width: 28, height: 28)
+            Button { withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.2)) { s.sidebarCollapsed.toggle() } } label: {
+                Image(systemName: "sidebar.left").font(.system(size: ts(16))).foregroundStyle(.secondary).frame(width: 28, height: 28)
                     .padding(.horizontal, 8).padding(.vertical, 4)
             }
             .buttonStyle(.plain).help(narrow ? "Show sidebar labels" : "Collapse to icons").padding(.bottom, 4)
+            .accessibilityLabel(narrow ? "Expand sidebar" : "Collapse sidebar")
 
             ForEach(Array(pages.enumerated()), id: \.element) { index, page in
                 if page == .cpu && !narrow {
-                    Text("PERFORMANCE").font(.system(size: 10.5, weight: .semibold)).foregroundStyle(.secondary)
+                    Text("PERFORMANCE").font(.system(size: ts(10.5), weight: .semibold)).foregroundStyle(.secondary)
                         .padding(.horizontal, 10).padding(.top, 12).padding(.bottom, 2)
                 } else if page == .cpu { Divider().padding(.vertical, 6) }
                 navButton(page, index: index, narrow: narrow)
@@ -145,16 +148,16 @@ struct ContentView: View {
         Button { nav.item = page } label: {
             HStack(spacing: 10) {
                 if let t = tile(page) {
-                    Sparkline(series: t.series, scale: t.scale).frame(width: narrow ? 40 : 46, height: 28)
+                    Sparkline(series: t.series, scale: t.scale).frame(width: narrow ? ts(40) : ts(46), height: ts(28))
                     if !narrow {
                         VStack(alignment: .leading, spacing: 0) {
-                            Text(page.title).font(.system(size: 13, weight: on ? .semibold : .regular))
-                            Text(t.value).font(.system(size: 11.5)).monospacedDigit().foregroundStyle(.secondary).lineLimit(1)
+                            Text(page.title).font(.system(size: ts(13), weight: on ? .semibold : .regular))
+                            Text(t.value).font(.system(size: ts(11.5))).monospacedDigit().foregroundStyle(.secondary).lineLimit(1)
                         }
                     }
                 } else {
-                    Image(systemName: page.icon).font(.system(size: 16)).foregroundStyle(s.accent).frame(width: narrow ? 40 : 46)
-                    if !narrow { Text(page.title).font(.system(size: 13, weight: on ? .semibold : .regular)) }
+                    Image(systemName: page.icon).font(.system(size: ts(16))).foregroundStyle(s.accent).frame(width: narrow ? ts(40) : ts(46))
+                    if !narrow { Text(page.title).font(.system(size: ts(13), weight: on ? .semibold : .regular)) }
                 }
                 if !narrow { Spacer(minLength: 0) }
             }
@@ -164,7 +167,7 @@ struct ContentView: View {
         }
         .buttonStyle(.plain).help("\(page.title) (⌘\(index + 1))")
         .keyboardShortcut(KeyEquivalent(Character("\(index + 1)")), modifiers: .command)
-        .accessibilityLabel(page.title).accessibilityAddTraits(on ? .isSelected : [])
+        .accessibilityLabel(page.title).accessibilityValue(tile(page)?.value ?? "").accessibilityAddTraits(on ? .isSelected : [])
     }
 
     private func tile(_ page: Item) -> (series: [Series], scale: Scale, value: String)? {
@@ -188,18 +191,18 @@ struct ContentView: View {
         VStack(alignment: .leading, spacing: 8) {
             if let info = updates.available {
                 Button { openWindow(id: "about") } label: {
-                    Label(narrow ? "" : "Update available: \(info.version)", systemImage: "arrow.down.circle.fill").font(.system(size: 12, weight: .medium))
-                }.buttonStyle(.borderless).help("Update available: \(info.version)")
+                    Label(narrow ? "" : "Update available: \(info.version)", systemImage: "arrow.down.circle.fill").font(.system(size: ts(12), weight: .medium))
+                }.buttonStyle(.borderless).help("Update available: \(info.version)").accessibilityLabel("Update available, version \(info.version)")
             }
             Button { nav.item = .settings } label: {
-                Label(narrow ? "" : "Settings", systemImage: "gearshape").font(.system(size: 13, weight: item == .settings ? .semibold : .regular))
+                Label(narrow ? "" : "Settings", systemImage: "gearshape").font(.system(size: ts(13), weight: item == .settings ? .semibold : .regular))
                     .foregroundStyle(item == .settings ? s.accent : Color.secondary)
             }
-            .buttonStyle(.borderless).help("Settings (⌘,)")
+            .buttonStyle(.borderless).help("Settings (⌘,)").accessibilityLabel("Settings").accessibilityAddTraits(item == .settings ? .isSelected : [])
             if !narrow {
                 VStack(alignment: .leading, spacing: 1) {
-                    Text("Task Manager").font(.system(size: 11, weight: .semibold))
-                    Text("v\(AppInfo.version) · build \(AppInfo.build)").font(.system(size: 10)).foregroundStyle(.secondary)
+                    Text("Task Manager").font(.system(size: ts(11), weight: .semibold))
+                    Text("v\(AppInfo.version) · build \(AppInfo.build)").font(.system(size: ts(10))).foregroundStyle(.secondary)
                 }.padding(.top, 4)
             }
         }

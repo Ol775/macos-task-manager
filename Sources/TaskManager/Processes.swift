@@ -16,10 +16,12 @@ enum ProcColumn: String, CaseIterable, Identifiable {
         }
     }
     var width: CGFloat {
+        let base: CGFloat
         switch self {
-        case .name: 0; case .cpu: 76; case .mem: 98; case .disk: 98; case .pid: 70
-        case .user: 100; case .threads: 76; case .state: 86; case .started: 150
+        case .name: base = 0; case .cpu: base = 76; case .mem: base = 98; case .disk: base = 98; case .pid: base = 70
+        case .user: base = 100; case .threads: base = 76; case .state: base = 86; case .started: base = 150
         }
+        return ts(base)
     }
     /// Text columns read left to right; numbers line up on the right.
     var leading: Bool { self == .name || self == .user || self == .state }
@@ -114,29 +116,39 @@ enum ProcInspector {
         return (out, list.count)
     }
 
-    /// Signature of the enclosing .app (or the executable itself).
+    /// True when the code satisfies a code-signing requirement (checks the signature's certificate chain, not just its text).
+    private static func satisfies(_ code: SecStaticCode, _ requirement: String) -> Bool {
+        var req: SecRequirement?
+        guard SecRequirementCreateWithString(requirement as CFString, [], &req) == errSecSuccess, let req else { return false }
+        return SecStaticCodeCheckValidity(code, SecCSFlags(rawValue: UInt32(kSecCSBasicValidateOnly)), req) == errSecSuccess
+    }
+
+    /// Who signed the enclosing .app (or the executable itself). The label comes from the certificate chain: a certificate that
+    /// merely has a familiar-looking name (anyone can create one) is reported as unverified, never as Apple or Developer ID.
+    /// Only the signature itself is checked (kSecCSBasicValidateOnly), not every resource, so a large app doesn't take minutes.
     static func signing(path: String) -> SigningInfo {
         var target = path
         if let r = path.range(of: ".app/") { target = String(path[..<r.lowerBound]) + ".app" }
         var code: SecStaticCode?
         guard SecStaticCodeCreateWithPath(URL(fileURLWithPath: target) as CFURL, [], &code) == errSecSuccess, let code else { return SigningInfo() }
-        let check = SecStaticCodeCheckValidity(code, SecCSFlags(rawValue: 0), nil)
+        let check = SecStaticCodeCheckValidity(code, SecCSFlags(rawValue: UInt32(kSecCSBasicValidateOnly)), nil)
         if check == errSecCSUnsigned { return SigningInfo(kind: "Unsigned", detail: "", valid: false) }
         var cf: CFDictionary?
         guard SecCodeCopySigningInformation(code, SecCSFlags(rawValue: kSecCSSigningInformation), &cf) == errSecSuccess,
               let info = cf as? [String: Any] else { return SigningInfo(kind: "Unknown") }
-        let valid = check == errSecSuccess
+        guard check == errSecSuccess else { return SigningInfo(kind: "Invalid signature", detail: "The code no longer matches its signature.", valid: false) }
         let flags = (info[kSecCodeInfoFlags as String] as? UInt32) ?? 0
         let team = info[kSecCodeInfoTeamIdentifier as String] as? String
         let leaf = (info[kSecCodeInfoCertificates as String] as? [SecCertificate])?.first.flatMap { SecCertificateCopySubjectSummary($0) as String? } ?? ""
-        var s = SigningInfo(valid: valid)
-        if !valid { s.kind = "Invalid signature" }
-        else if flags & 0x2 != 0 { s.kind = "Ad hoc" }
-        else if info[kSecCodeInfoPlatformIdentifier as String] != nil || leaf.hasPrefix("Software Signing") { s.kind = "Apple" }
-        else if leaf.hasPrefix("Developer ID") { s.kind = "Developer ID" }
-        else if leaf.contains("Mac App Store") || leaf.hasPrefix("Apple Mac OS Application Signing") { s.kind = "Mac App Store" }
-        else { s.kind = "Signed" }
-        s.detail = [leaf.isEmpty || leaf.hasPrefix("Software Signing") ? nil : leaf, team.map { "Team \($0)" }].compactMap { $0 }.joined(separator: " · ")
+        var s = SigningInfo(valid: true)
+        if flags & 0x2 != 0 { s.kind = "Ad hoc"; s.detail = "Signed without a developer certificate."; return s }
+        let name = [leaf.isEmpty ? nil : leaf, team.map { "Team \($0)" }].compactMap { $0 }.joined(separator: " · ")
+        if satisfies(code, "anchor apple") { s.kind = "Apple"; s.detail = "macOS Software Signing" }
+        else if satisfies(code, "anchor apple generic and certificate leaf[field.1.2.840.113635.100.6.1.9]") { s.kind = "Mac App Store"; s.detail = name }
+        else if satisfies(code, "anchor apple generic and certificate 1[field.1.2.840.113635.100.6.2.6] and certificate leaf[field.1.2.840.113635.100.6.1.13]") {
+            s.kind = "Developer ID"; s.detail = name
+        } else if satisfies(code, "anchor apple generic") { s.kind = "Apple-issued certificate"; s.detail = name }
+        else { s.kind = "Unverified certificate"; s.detail = "Signed with a certificate Apple did not issue" + (name.isEmpty ? "." : ": \(name)"); s.valid = false }
         return s
     }
 }
@@ -179,6 +191,7 @@ struct ProcessesView: View {
     @State private var key = ProcColumn.cpu
     @State private var ascending = false
     @AppStorage("showDetails") private var showDetails = false
+    @FocusState private var listFocused: Bool
 
     private var rows: [Proc] {
         m.procs
@@ -201,6 +214,14 @@ struct ProcessesView: View {
     }
 
     private var columns: [ProcColumn] { settings.columns }
+
+    private func move(_ delta: Int, in rows: [Proc], _ proxy: ScrollViewProxy) {
+        guard !rows.isEmpty else { return }
+        let i = selection.flatMap { id in rows.firstIndex { $0.id == id } }
+        let next = rows[min(max((i ?? (delta > 0 ? -1 : rows.count)) + delta, 0), rows.count - 1)].id
+        selection = next
+        proxy.scrollTo(next)
+    }
     private var selected: Proc? { selection.flatMap { id in m.procs.first { $0.id == id } } }
 
     var body: some View {
@@ -213,9 +234,11 @@ struct ProcessesView: View {
                 searchField
                 columnMenu
                 Button { showDetails.toggle() } label: { Label("Details", systemImage: "sidebar.right") }
-                    .help("Show details for the selected process").disabled(selection == nil && !showDetails)
+                    .help("Show details for the selected process (⌘I)").disabled(selection == nil && !showDetails)
+                    .keyboardShortcut("i", modifiers: .command)
                 Button { if let p = selected { endTask(p) } } label: { Label("End Task", systemImage: "xmark.circle") }
-                    .help("End the selected task").disabled(selection == nil)
+                    .help("End the selected task (⌘⌫)").disabled(selection == nil)
+                    .keyboardShortcut(.delete, modifiers: .command)
             }
             .labelStyle(.iconOnly).controlSize(.large)
             GeometryReader { g in
@@ -224,13 +247,22 @@ struct ProcessesView: View {
                     VStack(spacing: 0) {
                         header
                         Divider()
-                        ScrollView {
-                            LazyVStack(spacing: 0) {
-                                ForEach(Array(rows.enumerated()), id: \.element.id) { i, p in row(p, striped: i % 2 == 1) }
+                        ScrollViewReader { proxy in
+                            ScrollView {
+                                LazyVStack(spacing: 0) {
+                                    ForEach(Array(rows.enumerated()), id: \.element.id) { i, p in row(p, striped: i % 2 == 1).id(p.id) }
+                                }
                             }
+                            // Keyboard: ↑ ↓ move the selection, Return shows details, Esc closes them.
+                            .focusable().focused($listFocused)
+                            .onKeyPress(.upArrow) { move(-1, in: rows, proxy); return .handled }
+                            .onKeyPress(.downArrow) { move(1, in: rows, proxy); return .handled }
+                            .onKeyPress(.return) { if selection != nil { showDetails = true; return .handled }; return .ignored }
+                            .onKeyPress(.escape) { if showDetails { showDetails = false; return .handled }; return .ignored }
+                            .accessibilityLabel("Process list").accessibilityHint("Use the up and down arrow keys to choose a process, Return for details.")
                         }
                     }
-                    .frame(width: max(g.size.width, 160 + columns.reduce(0) { $0 + $1.width }), height: g.size.height)
+                    .frame(width: max(g.size.width, ts(160) + columns.reduce(0) { $0 + $1.width }), height: g.size.height)
                 }
             }
             .card().clipShape(RoundedRectangle(cornerRadius: settings.corners.radius, style: .continuous))
@@ -245,8 +277,9 @@ struct ProcessesView: View {
         HStack(spacing: 6) {
             Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
             TextField("Search", text: $search).textFieldStyle(.plain).frame(minWidth: 90, maxWidth: 150)
+                .accessibilityLabel("Search processes").onKeyPress(.escape) { if search.isEmpty { return .ignored }; search = ""; return .handled }
             if !search.isEmpty {
-                Button { search = "" } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary) }.buttonStyle(.plain)
+                Button { search = "" } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary) }.buttonStyle(.plain).accessibilityLabel("Clear search")
             }
         }
         .padding(.horizontal, 10).padding(.vertical, 6)
@@ -271,10 +304,10 @@ struct ProcessesView: View {
 
     private var header: some View {
         HStack(spacing: 0) {
-            headerCell(.name).frame(minWidth: 160, maxWidth: .infinity, alignment: .leading)
+            headerCell(.name).frame(minWidth: ts(160), maxWidth: .infinity, alignment: .leading)
             ForEach(columns) { c in headerCell(c).frame(width: c.width) }
         }
-        .frame(height: 32)
+        .frame(height: ts(32))
         .contextMenu { ForEach(ProcColumn.optional) { c in Toggle(c.title, isOn: columnBinding(c)) } }
     }
 
@@ -284,7 +317,7 @@ struct ProcessesView: View {
         } label: {
             HStack(spacing: 3) {
                 if !c.leading, key == c { chevron }
-                Text(c.title).font(.system(size: 12, weight: .semibold))
+                Text(c.title).font(.system(size: ts(12), weight: .semibold))
                 if c.leading, key == c { chevron }
             }
             .foregroundStyle(key == c ? Color.primary : Color.secondary)
@@ -293,24 +326,25 @@ struct ProcessesView: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Sort by \(c.title)")
+        .accessibilityValue(key == c ? (ascending ? "sorted ascending" : "sorted descending") : "")
     }
 
     private var chevron: some View {
-        Image(systemName: ascending ? "chevron.up" : "chevron.down").font(.system(size: 8, weight: .bold))
+        Image(systemName: ascending ? "chevron.up" : "chevron.down").font(.system(size: ts(8), weight: .bold))
     }
 
     private func row(_ p: Proc, striped: Bool) -> some View {
         let on = selection == p.id
         return HStack(spacing: 0) {
             HStack(spacing: 8) {
-                if let icon = p.icon { Image(nsImage: icon).resizable().frame(width: 20, height: 20) }
-                else { Image(systemName: "gearshape.fill").frame(width: 20, height: 20).foregroundStyle(.secondary) }
+                if let icon = p.icon { Image(nsImage: icon).resizable().frame(width: ts(20), height: ts(20)) }
+                else { Image(systemName: "gearshape.fill").frame(width: ts(20), height: ts(20)).foregroundStyle(.secondary) }
                 Text(p.name).lineLimit(1)
             }
-            .padding(.leading, 12).frame(minWidth: 160, maxWidth: .infinity, alignment: .leading)
+            .padding(.leading, 12).frame(minWidth: ts(160), maxWidth: .infinity, alignment: .leading)
             ForEach(columns) { c in cell(c, p) }
         }
-        .font(.system(size: 13)).frame(height: 28)
+        .font(.system(size: ts(13))).frame(height: ts(28))
         .background(on ? settings.accent.opacity(0.20) : (striped ? Color.primary.opacity(0.04) : .clear))
         .overlay(alignment: .leading) { if on { Rectangle().fill(settings.accent).frame(width: 3) } }
         .contentShape(Rectangle())
@@ -322,7 +356,31 @@ struct ProcessesView: View {
             Divider()
             Button("End Task", role: .destructive) { endTask(p) }
         }
-        .accessibilityElement(children: .combine).accessibilityAddTraits(on ? .isSelected : [])
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(rowDescription(p))
+        .accessibilityAddTraits(on ? [.isButton, .isSelected] : .isButton)
+        .accessibilityAction { selection = p.id }
+        .accessibilityAction(named: "Show details") { selection = p.id; showDetails = true }
+        .accessibilityAction(named: "End task") { selection = p.id; endTask(p) }
+    }
+
+    /// What VoiceOver reads for a row: the name, then each visible column with its label and unit.
+    private func rowDescription(_ p: Proc) -> String {
+        var parts = [p.name]
+        for c in columns {
+            switch c {
+            case .cpu: parts.append(String(format: "CPU %.1f percent", p.cpu))
+            case .mem: parts.append("Memory " + bytes(p.mem))
+            case .disk: parts.append("Disk " + Rates.format(p.disk))
+            case .pid: parts.append("PID \(p.id)")
+            case .user: parts.append("User " + p.user)
+            case .threads: parts.append("\(p.threads) threads")
+            case .state: parts.append(p.state)
+            case .started: if p.started != 0 { parts.append("Started " + startFormat(p.started)) }
+            case .name: break
+            }
+        }
+        return parts.joined(separator: ", ")
     }
 
     @ViewBuilder private func cell(_ c: ProcColumn, _ p: Proc) -> some View {
@@ -369,13 +427,13 @@ struct ProcessDetailsView: View {
             VStack(alignment: .leading, spacing: 16) {
                 HStack(spacing: 12) {
                     if let icon = proc.icon { Image(nsImage: icon).resizable().frame(width: 44, height: 44) }
-                    else { Image(systemName: "gearshape.fill").font(.system(size: 28)).frame(width: 44, height: 44).foregroundStyle(.secondary) }
+                    else { Image(systemName: "gearshape.fill").font(.system(size: ts(28))).frame(width: 44, height: 44).foregroundStyle(.secondary) }
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(proc.name).font(.system(size: 18, weight: .bold, design: .rounded)).lineLimit(2)
-                        Text("PID " + String(proc.id)).font(.caption).foregroundStyle(.secondary)
+                        Text(proc.name).font(.system(size: ts(18), weight: .bold, design: .rounded)).lineLimit(2)
+                        Text("PID " + String(proc.id)).font(.system(size: ts(11))).foregroundStyle(.secondary)
                     }
                     Spacer(minLength: 0)
-                    Button(action: close) { Image(systemName: "xmark") }.buttonStyle(.plain).foregroundStyle(.secondary).help("Hide details")
+                    Button(action: close) { Image(systemName: "xmark") }.buttonStyle(.plain).foregroundStyle(.secondary).help("Hide details").accessibilityLabel("Hide details")
                 }
                 group("Process") {
                     row("State", proc.state)
@@ -387,7 +445,7 @@ struct ProcessDetailsView: View {
                 }
                 if let d = details {
                     group("Location") {
-                        Text(d.path.isEmpty ? "macOS doesn’t share this path." : d.path).font(.system(size: 12)).textSelection(.enabled)
+                        Text(d.path.isEmpty ? "macOS doesn’t share this path." : d.path).font(.system(size: ts(12))).textSelection(.enabled)
                             .frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 6)
                         if !d.path.isEmpty {
                             Button("Reveal in Finder") { NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: d.path)]) }
@@ -397,25 +455,25 @@ struct ProcessDetailsView: View {
                     group("Code signature") {
                         HStack(spacing: 8) {
                             Image(systemName: d.signing.valid ? "checkmark.seal.fill" : "exclamationmark.triangle.fill")
-                                .foregroundStyle(d.signing.valid ? Color.green : Color.orange)
+                                .foregroundStyle(d.signing.valid ? Color.green : Color.orange).accessibilityHidden(true)
                             Text(d.signing.kind).fontWeight(.medium)
                         }.padding(.vertical, 6)
                         if !d.signing.detail.isEmpty {
-                            Text(d.signing.detail).font(.system(size: 12)).foregroundStyle(.secondary).textSelection(.enabled).padding(.bottom, 8)
+                            Text(d.signing.detail).font(.system(size: ts(12))).foregroundStyle(.secondary).textSelection(.enabled).padding(.bottom, 8)
                         }
                     }
                     group("Open ports") {
                         if d.ports.isEmpty { Text("No open TCP or UDP sockets.").foregroundStyle(.secondary).padding(.vertical, 6) }
                         ForEach(d.ports.prefix(40)) { p in
                             HStack {
-                                Text(p.proto).fontWeight(.medium).frame(width: 36, alignment: .leading)
+                                Text(p.proto).fontWeight(.medium).frame(width: ts(36), alignment: .leading)
                                 Text(String(p.local)).monospacedDigit()
                                 if let r = p.remote { Text("→ \(r)").monospacedDigit().foregroundStyle(.secondary) }
                                 Spacer(minLength: 8)
                                 Text(p.state).foregroundStyle(.secondary)
-                            }.font(.system(size: 12.5)).padding(.vertical, 3)
+                            }.font(.system(size: ts(12.5))).padding(.vertical, 3)
                         }
-                        if d.ports.count > 40 { Text("and \(d.ports.count - 40) more").font(.caption).foregroundStyle(.secondary) }
+                        if d.ports.count > 40 { Text("and \(d.ports.count - 40) more").font(.system(size: ts(11))).foregroundStyle(.secondary) }
                     }
                 } else {
                     ProgressView().controlSize(.small).frame(maxWidth: .infinity)
@@ -432,7 +490,7 @@ struct ProcessDetailsView: View {
 
     private func group<C: View>(_ title: String, @ViewBuilder _ content: () -> C) -> some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text(title).font(.system(size: 12, weight: .semibold)).foregroundStyle(.secondary).padding(.bottom, 4)
+            Text(title).font(.system(size: ts(12), weight: .semibold)).foregroundStyle(.secondary).padding(.bottom, 4).accessibilityAddTraits(.isHeader)
             VStack(alignment: .leading, spacing: 0) { content() }.padding(.horizontal, 12).frame(maxWidth: .infinity, alignment: .leading).card()
         }
     }
@@ -442,6 +500,6 @@ struct ProcessDetailsView: View {
             Text(label).foregroundStyle(.secondary)
             Spacer(minLength: 12)
             Text(value).monospacedDigit().multilineTextAlignment(.trailing).textSelection(.enabled)
-        }.font(.system(size: 13)).padding(.vertical, 6)
+        }.font(.system(size: ts(13))).padding(.vertical, 6).accessibilityElement(children: .combine)
     }
 }

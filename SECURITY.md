@@ -11,6 +11,19 @@ Please use GitHub's **private vulnerability reporting** (Security tab → *Repor
 - No telemetry, no accounts, no analytics. The only network request is the update check (below), which you can turn off in Settings → General.
 - The app is not sandboxed (the sandbox blocks the process APIs it relies on) and is ad-hoc code signed, not notarized.
 
+## Security review (7 October 2026, v0.4.1)
+The whole code base was reviewed: updater, process and socket inspection, code-signature checks, End Task, menu bar controller, preferences handling, build and release scripts, CI and the Homebrew cask. Findings fixed in 0.4.1:
+
+- **Misleading signer label (medium).** The process details panel decided "Apple" or "Developer ID" from the certificate's *name*, which anyone can imitate. Labels now come from Apple's certificate-chain requirements (`anchor apple`, Developer ID and App Store requirements); anything else is shown as an unverified certificate.
+- **Update URL checks (low).** Asset URLs must be exactly this repository's `releases/download/` path on github.com: no port, credentials, query, `..` or empty path segments.
+- **Installer re-verification (low).** The swap helper now runs `codesign --verify --deep --strict` on the installed app after copying it and rolls back to the backup if that fails.
+- **Crash on non-finite rates (low).** Disk and CPU rates could reach an integer conversion that traps on NaN or infinity; they are now sanitised.
+- **Hardened runtime.** The app is built with `codesign --options runtime` (blocks code injection and debugger attach).
+- **CI least privilege.** The workflow token is read-only.
+- **Signature checks are bounded.** The details panel verifies the signature itself rather than every resource, so inspecting a very large app can't tie up the machine.
+
+Residual risks, accepted: the app is ad-hoc signed and not notarized; the Homebrew cask clears the quarantine flag (the cask pins the DMG's SHA-256 and the app verifies its own updates); a process running as your own user can already tamper with your files, so local same-user attacks are out of scope; `SIGTERM` could in principle hit a recycled pid in the microseconds between the start-time check and `kill`.
+
 ## Updates
 Updates come only from this repository's GitHub releases and are installed only if **all** of these pass:
 
@@ -21,7 +34,7 @@ Updates come only from this repository's GitHub releases and are installed only 
 5. The app inside has bundle id `io.github.ol775.taskmanager`, the announced version, and a valid code signature.
 6. The executable's fingerprint, taken at verification, is unchanged at install time.
 
-Downloads are capped at 100 MB and 10 minutes. The previous app is kept as a backup and restored if the swap fails.
+Downloads are capped at 100 MB and 10 minutes. After the swap the installed app is verified again and the previous version is restored if it fails. The previous app is kept as a backup and restored if the swap fails.
 
 ## Verifying a release yourself
 ```sh

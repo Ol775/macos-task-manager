@@ -53,6 +53,7 @@ struct Sparkline: View {
         .chartXAxis(.hidden).chartYAxis(.hidden)
         .background(series.first?.color.opacity(0.10) ?? .clear, in: RoundedRectangle(cornerRadius: 7))
         .clipShape(RoundedRectangle(cornerRadius: 7))
+        .accessibilityHidden(true)      // the page announces the numbers; a thumbnail graph adds nothing for VoiceOver
     }
 }
 
@@ -79,10 +80,11 @@ struct ResourceDetail: View {
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 170), spacing: 14)], spacing: 14) {
                     ForEach(stats) { s in
                         VStack(alignment: .leading, spacing: 4) {
-                            Text(s.label).font(.system(size: 12)).foregroundStyle(.secondary)
-                            Text(s.value).font(.system(size: 21, weight: .semibold, design: .rounded)).monospacedDigit().lineLimit(1).minimumScaleFactor(0.7)
+                            Text(s.label).font(.system(size: ts(12))).foregroundStyle(.secondary)
+                            Text(s.value).font(.system(size: ts(21), weight: .semibold, design: .rounded)).monospacedDigit().lineLimit(1).minimumScaleFactor(0.7)
                         }
                         .padding(14).frame(maxWidth: .infinity, alignment: .leading).card()
+                        .accessibilityElement(children: .combine)
                     }
                 }
             }
@@ -96,7 +98,7 @@ struct ResourceDetail: View {
         case .percent:
             VStack(spacing: 14) {
                 RingGauge(value: series.first?.data.last ?? 0, color: series.first.map { Color.metric($0.color) } ?? .accentColor, size: 150, line: 14)
-                Text("Utilization").font(.system(size: 13)).foregroundStyle(.secondary)
+                Text("Utilization").font(.system(size: ts(13))).foregroundStyle(.secondary)
                 Spacer(minLength: 0)
             }
             .frame(maxWidth: .infinity)
@@ -106,12 +108,12 @@ struct ResourceDetail: View {
                     VStack(alignment: .leading, spacing: 2) {
                         HStack(spacing: 6) {
                             legendSwatch(s)
-                            Text(s.name).font(.system(size: 13)).foregroundStyle(.secondary)
+                            Text(s.name).font(.system(size: ts(13))).foregroundStyle(.secondary)
                         }
                         Text(Rates.format(s.data.last ?? 0))
-                            .font(.system(size: 26, weight: .bold, design: .rounded)).monospacedDigit().foregroundStyle(Color.metric(s.color))
+                            .font(.system(size: ts(26), weight: .bold, design: .rounded)).monospacedDigit().foregroundStyle(Color.metric(s.color))
                             .lineLimit(1).minimumScaleFactor(0.6)
-                        Text("peak \(Rates.format(s.data.max() ?? 0))").font(.system(size: 11.5)).foregroundStyle(.tertiary).monospacedDigit()
+                        Text("peak \(Rates.format(s.data.max() ?? 0))").font(.system(size: ts(11.5))).foregroundStyle(.secondary).monospacedDigit()
                     }
                 }
                 Spacer(minLength: 0)
@@ -123,6 +125,7 @@ struct ResourceDetail: View {
     private func legendSwatch(_ s: Series) -> some View {
         RoundedRectangle(cornerRadius: 1).fill(Color.metric(s.color)).frame(width: s.dashed ? 10 : 14, height: 3)
             .overlay { if s.dashed { Rectangle().fill(settings.cardColor).frame(width: 2, height: 4) } }
+            .accessibilityHidden(true)
     }
 
     private func chart(top: Double) -> some View {
@@ -146,13 +149,20 @@ struct ResourceDetail: View {
                 AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5, dash: [3, 4])).foregroundStyle(.tertiary)
                 AxisValueLabel {
                     if let n = v.as(Double.self) {
-                        if case .percent = scale { Text("\(Int(n))%").font(.system(size: 10)) } else { Text(n == 0 ? "0" : Rates.format(n)).font(.system(size: 10)) }
+                        if case .percent = scale { Text("\(Int(n))%").font(.system(size: ts(10))) } else { Text(n == 0 ? "0" : Rates.format(n)).font(.system(size: ts(10))) }
                     }
                 }.foregroundStyle(Color.secondary)
             }
         }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(title) over the last \(Int(Double(Monitor.samples) * monitor.interval)) seconds")
+        .accessibilityValue(series.map { s in
+            let now = s.data.last ?? 0, peak = s.data.max() ?? 0
+            if case .percent = scale { return "\(s.name) now \(Int(now.rounded())) percent, highest \(Int(peak.rounded())) percent" }
+            return "\(s.name) now \(Rates.format(now)), highest \(Rates.format(peak))"
+        }.joined(separator: ". "))
         .overlay(alignment: .bottomLeading) {
-            Text("Last \(Int(Double(Monitor.samples) * monitor.interval)) seconds").font(.system(size: 10)).foregroundStyle(.tertiary)
+            Text("Last \(Int(Double(Monitor.samples) * monitor.interval)) seconds").font(.system(size: ts(11))).foregroundStyle(.secondary).accessibilityHidden(true)
         }
     }
 }

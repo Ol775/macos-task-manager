@@ -53,8 +53,13 @@ enum Updater {
         return h == "github.com" || h.hasSuffix(".githubusercontent.com")
     }
 
+    /// Only this repository's release downloads on github.com: https, no port or credentials, no query, and no path tricks
+    /// (".." or empty segments) that could climb out of /releases/download/.
     static func isTrustedAsset(_ u: URL) -> Bool {
-        u.scheme == "https" && u.host == "github.com" && u.path.hasPrefix("/\(repo)/releases/download/")
+        guard u.scheme == "https", u.host == "github.com", u.port == nil, u.user == nil, u.password == nil,
+              u.query == nil, u.fragment == nil else { return false }
+        let parts = u.path.split(separator: "/", omittingEmptySubsequences: false)
+        return u.path.hasPrefix("/\(repo)/releases/download/") && !parts.dropFirst().contains { $0.isEmpty || $0 == "." || $0 == ".." }
     }
 
     static func verifySignature(_ data: Data, base64Signature: String, publicKey key: String = Updater.publicKey) -> Bool {
@@ -230,7 +235,7 @@ enum Updater {
         while kill -0 "$PID" 2>/dev/null; do sleep 0.3; done
         rm -rf "$BACKUP"
         [ -d "$DEST" ] && mv "$DEST" "$BACKUP"
-        if ! cp -R "$NEW" "$DEST"; then rm -rf "$DEST"; [ -d "$BACKUP" ] && mv "$BACKUP" "$DEST"; fi
+        if ! cp -R "$NEW" "$DEST" || ! /usr/bin/codesign --verify --deep --strict "$DEST"; then rm -rf "$DEST"; [ -d "$BACKUP" ] && mv "$BACKUP" "$DEST"; fi
         open "$DEST"
         """
         guard (try? body.write(to: script, atomically: true, encoding: .utf8)) != nil else { return "Couldn’t prepare the installer." }
@@ -250,6 +255,11 @@ enum Updater {
         check(isTrustedAsset(URL(string: "https://github.com/\(repo)/releases/download/v1.0.0/a.dmg")!), "trusted asset")
         check(!isTrustedAsset(URL(string: "https://github.com/other/repo/releases/download/v1.0.0/a.dmg")!), "other repo rejected")
         check(!isTrustedAsset(URL(string: "http://github.com/\(repo)/releases/download/v1.0.0/a.dmg")!), "http rejected")
+        check(!isTrustedAsset(URL(string: "https://github.com/\(repo)/releases/download/../../../evil/repo/a.dmg")!), "path traversal rejected")
+        check(!isTrustedAsset(URL(string: "https://github.com/\(repo)/releases/download/v1/a.dmg?x=1")!), "query rejected")
+        check(!isTrustedAsset(URL(string: "https://github.com:444/\(repo)/releases/download/v1/a.dmg")!), "port rejected")
+        check(!isTrustedAsset(URL(string: "https://user@github.com/\(repo)/releases/download/v1/a.dmg")!), "credentials rejected")
+        check(!isTrustedAsset(URL(string: "https://github.com/\(repo)/releases/download//a.dmg")!), "empty segment rejected")
         check(isAllowedRedirectHost("objects.githubusercontent.com") && !isAllowedRedirectHost("evil.com") && !isAllowedRedirectHost("githubusercontent.com.evil.com"), "redirect hosts")
         let key = Curve25519.Signing.PrivateKey(), pub = key.publicKey.rawRepresentation.base64EncodedString()
         let dmg = Data("image".utf8)

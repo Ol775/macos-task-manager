@@ -30,9 +30,11 @@ enum Rates {
     /// Difference of two readings of a counter that wraps at 2^32 (the `if_data` byte counters do).
     static func delta32(_ old: UInt32, _ new: UInt32) -> UInt64 { UInt64(new &- old) }
     static func perSecond(_ bytes: UInt64, over ns: UInt64) -> Double { ns == 0 ? 0 : Double(bytes) / (Double(ns) / 1e9) }
+    /// A rate that is finite and not negative; anything else (a zero interval gives infinity) counts as 0.
+    static func sane(_ v: Double) -> Double { v.isFinite && v > 0 ? v : 0 }
     static func format(_ bytesPerSecond: Double) -> String {
-        if bytesPerSecond < 1 { return "0 B/s" }
-        return ByteCountFormatter.string(fromByteCount: Int64(bytesPerSecond), countStyle: .decimal) + "/s"
+        guard bytesPerSecond.isFinite, bytesPerSecond >= 1 else { return "0 B/s" }      // NaN or infinity must never reach Int64(_:), which traps
+        return ByteCountFormatter.string(fromByteCount: Int64(min(bytesPerSecond, 9e18)), countStyle: .decimal) + "/s"
     }
     /// A round axis maximum at least 20% above `peak`, never below `floor`.
     static func niceMax(_ peak: Double, floor: Double) -> Double {
@@ -280,14 +282,14 @@ final class Monitor: ObservableObject {
             let abs = ti.pti_total_user + ti.pti_total_system
             let cpuNs = abs * UInt64(timebase.numer) / UInt64(timebase.denom)
             ns[pid] = cpuNs
-            let cpu = lastProcNs[pid].map { cpuNs >= $0 ? Double(cpuNs - $0) / wall * 100 / Double(cores) : 0 } ?? 0
+            let cpu = Rates.sane(lastProcNs[pid].map { cpuNs >= $0 ? Double(cpuNs - $0) / wall * 100 / Double(cores) : 0 } ?? 0)
             var ri = rusage_info_v4()
             let rok = withUnsafeMutablePointer(to: &ri) { p in
                 p.withMemoryRebound(to: rusage_info_t?.self, capacity: 1) { proc_pid_rusage(pid, RUSAGE_INFO_V4, $0) }
             } == 0
             let io = rok ? ri.ri_diskio_bytesread + ri.ri_diskio_byteswritten : 0
             diskBytes[pid] = io
-            let diskRate = lastProcDisk[pid].map { io >= $0 ? Double(io - $0) / (wall / 1e9) : 0 } ?? 0
+            let diskRate = Rates.sane(lastProcDisk[pid].map { io >= $0 ? Double(io - $0) / (wall / 1e9) : 0 } ?? 0)
             let name = apps[pid]?.localizedName ?? (proc_name(pid, &nameBuf, 256) > 0 ? String(cString: nameBuf) : "pid \(pid)")
             out.append(Proc(id: pid, name: name, isApp: apps[pid] != nil, cpu: cpu, mem: ti.pti_resident_size, started: started, icon: apps[pid]?.icon,
                             ppid: Int32(bitPattern: bsd.pbi_ppid), user: userName(bsd.pbi_uid), threads: ti.pti_threadnum,

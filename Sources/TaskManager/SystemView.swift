@@ -25,14 +25,14 @@ struct SystemView: View {
                 if let s = SystemInfo.storage {
                     let used = Double(s.total - s.available) / Double(max(s.total, 1))
                     VStack(alignment: .leading, spacing: 10) {
-                        Text("Storage").font(.headline)
+                        Text("Storage").font(.system(size: ts(13), weight: .semibold))
                         CapsuleBar(value: used, color: Color.metric(settings.diskColor), height: 8)
                         HStack {
                             Text("\(ByteCountFormatter.string(fromByteCount: s.total - s.available, countStyle: .file)) used")
                             Spacer()
                             Text("\(ByteCountFormatter.string(fromByteCount: s.available, countStyle: .file)) available of \(ByteCountFormatter.string(fromByteCount: s.total, countStyle: .file))")
                                 .foregroundStyle(.secondary)
-                        }.font(.system(size: 12.5)).monospacedDigit()
+                        }.font(.system(size: ts(12.5))).monospacedDigit()
                     }
                     .padding(16).frame(maxWidth: .infinity, alignment: .leading).card()
                 }
@@ -46,7 +46,7 @@ struct SystemView: View {
 
     private func card(_ title: String, _ rows: [(String, String)]) -> some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text(title).font(.headline).padding(.bottom, 8)
+            Text(title).font(.system(size: ts(13), weight: .semibold)).padding(.bottom, 8)
             ForEach(Array(rows.enumerated()), id: \.offset) { i, row in
                 if i > 0 { Divider().opacity(0.5) }
                 HStack(alignment: .firstTextBaseline) {
@@ -54,7 +54,7 @@ struct SystemView: View {
                     Spacer(minLength: 16)
                     Text(row.1).multilineTextAlignment(.trailing).textSelection(.enabled)
                 }
-                .font(.system(size: 13)).padding(.vertical, 7)
+                .font(.system(size: ts(13))).padding(.vertical, 7).accessibilityElement(children: .combine)
             }
         }
         .padding(16).frame(maxWidth: .infinity, alignment: .leading).card()

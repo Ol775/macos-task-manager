@@ -11,26 +11,27 @@ struct SettingsPage: View {
                 PageHeader(title: "Settings", subtitle: "Appearance, graph colours, process columns and permissions") { EmptyView() }
 
                 section("Appearance") {
-                    row("Theme") { PillPicker(selection: $s.appearance, options: AppSettings.Appearance.allCases.map { ($0, $0.rawValue) }) }
+                    row("Theme") { PillPicker(selection: $s.appearance, options: AppSettings.Appearance.allCases.map { ($0, $0.rawValue) }, label: "Theme") }
                     row("Accent colour") { swatches }
-                    row("Card corners") { PillPicker(selection: $s.corners, options: CardCorners.allCases.map { ($0, $0.label) }) }
+                    row("Text size") { PillPicker(selection: $s.textSize, options: TextSize.allCases.map { ($0, $0.label) }, label: "Text size") }
+                    row("Card corners") { PillPicker(selection: $s.corners, options: CardCorners.allCases.map { ($0, $0.label) }, label: "Card corners") }
                 }
 
                 section("General") {
                     row("Update graphs every") {
-                        Picker("", selection: $s.interval) {
+                        Picker("Update graphs every", selection: $s.interval) {
                             Text("0.5 seconds").tag(0.5); Text("1 second").tag(1.0); Text("2 seconds").tag(2.0); Text("5 seconds").tag(5.0)
                         }.labelsHidden().fixedSize()
                     }
-                    row("Show apps only in Processes") { Toggle("", isOn: $s.appsOnly).labelsHidden().toggleStyle(.switch) }
-                    row("Check for updates automatically") { Toggle("", isOn: $s.autoUpdate).labelsHidden().toggleStyle(.switch) }
+                    row("Show apps only in Processes") { Toggle("Show apps only in Processes", isOn: $s.appsOnly).labelsHidden().toggleStyle(.switch) }
+                    row("Check for updates automatically") { Toggle("Check for updates automatically", isOn: $s.autoUpdate).labelsHidden().toggleStyle(.switch) }
                 }
 
                 section("Menu bar", footer: "A compact readout in the menu bar, and a popover with graphs and your busiest apps. Hiding the Dock icon needs the menu bar item, so the app is always reachable.") {
-                    row("Show in menu bar") { Toggle("", isOn: $s.menuBarEnabled).labelsHidden().toggleStyle(.switch) }
-                    row("Hide Dock icon") { Toggle("", isOn: $s.hideDock).labelsHidden().toggleStyle(.switch).disabled(!s.menuBarEnabled) }
-                    row("Show icon") { Toggle("", isOn: $s.menuShowIcon).labelsHidden().toggleStyle(.switch).disabled(!s.menuBarEnabled) }
-                    row("Show labels (CPU 34%)") { Toggle("", isOn: $s.menuLabels).labelsHidden().toggleStyle(.switch).disabled(!s.menuBarEnabled) }
+                    row("Show in menu bar") { Toggle("Show in menu bar", isOn: $s.menuBarEnabled).labelsHidden().toggleStyle(.switch) }
+                    row("Hide Dock icon") { Toggle("Hide Dock icon", isOn: $s.hideDock).labelsHidden().toggleStyle(.switch).disabled(!s.menuBarEnabled) }
+                    row("Show icon") { Toggle("Show icon", isOn: $s.menuShowIcon).labelsHidden().toggleStyle(.switch).disabled(!s.menuBarEnabled) }
+                    row("Show labels (CPU 34%)") { Toggle("Show labels", isOn: $s.menuLabels).labelsHidden().toggleStyle(.switch).disabled(!s.menuBarEnabled) }
                     LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), alignment: .leading)], alignment: .leading, spacing: 10) {
                         ForEach(MenuMetric.allCases) { k in
                             Toggle(k.title, isOn: Binding(
@@ -84,8 +85,8 @@ struct SettingsPage: View {
                 Circle().fill(AngularGradient(colors: [.red, .yellow, .green, .cyan, .blue, .purple, .red], center: .center)).frame(width: 22, height: 22)
                     .overlay(Circle().stroke(Color.primary, lineWidth: s.theme == .custom ? 2 : 0).padding(-3))
             }
-            .buttonStyle(.plain).help("Custom").accessibilityLabel("Custom accent")
-            if s.theme == .custom { ColorPicker("", selection: $s.customAccent, supportsOpacity: false).labelsHidden() }
+            .buttonStyle(.plain).help("Custom").accessibilityLabel("Custom accent").accessibilityAddTraits(s.theme == .custom ? .isSelected : [])
+            if s.theme == .custom { ColorPicker("Custom accent colour", selection: $s.customAccent, supportsOpacity: false).labelsHidden() }
         }
         .padding(.leading, 3)
     }
@@ -108,10 +109,10 @@ struct SettingsPage: View {
 
     private func section<C: View>(_ title: String, footer: String? = nil, @ViewBuilder _ content: () -> C) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(title).font(.system(size: 13, weight: .semibold)).foregroundStyle(.secondary).padding(.leading, 4)
+            Text(title).font(.system(size: ts(13), weight: .semibold)).foregroundStyle(.secondary).padding(.leading, 4).accessibilityAddTraits(.isHeader)
             VStack(alignment: .leading, spacing: 0) { content() }
                 .padding(.horizontal, 16).frame(maxWidth: .infinity, alignment: .leading).card()
-            if let footer { Text(footer).font(.caption).foregroundStyle(.secondary).padding(.horizontal, 4) }
+            if let footer { Text(footer).font(.system(size: ts(11))).foregroundStyle(.secondary).padding(.horizontal, 4) }
         }
     }
 
@@ -132,11 +133,13 @@ struct StatusRow: View {
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
             Image(systemName: ok ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
-                .foregroundStyle(ok ? .green : .orange).font(.system(size: 16))
+                .foregroundStyle(ok ? .green : .orange).font(.system(size: ts(16))).accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 2) {
                 Text(title).fontWeight(.medium)
-                Text(detail).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                Text(detail).font(.system(size: ts(11))).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
         }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(ok ? "OK" : "Needs attention"): \(title). \(detail)")
     }
 }

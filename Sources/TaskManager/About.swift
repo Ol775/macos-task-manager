@@ -5,12 +5,12 @@ struct AboutView: View {
 
     var body: some View {
         VStack(spacing: 8) {
-            Image(nsImage: NSApp.applicationIconImage).resizable().frame(width: 96, height: 96)
-            Text("Task Manager").font(.system(size: 22, weight: .semibold, design: .rounded))
+            Image(nsImage: NSApp.applicationIconImage).resizable().frame(width: 96, height: 96).accessibilityHidden(true)
+            Text("Task Manager").font(.system(size: ts(22), weight: .semibold, design: .rounded))
             Text("Version \(AppInfo.version) (\(AppInfo.build))").foregroundStyle(.secondary)
             updateSection.padding(.top, 10)
             Link("GitHub", destination: URL(string: "https://github.com/\(Updater.repo)")!).padding(.top, 6)
-            Text("© 2026 Ol775 · MIT License").font(.caption).foregroundStyle(.tertiary)
+            Text("© 2026 Ol775 · MIT License").font(.system(size: ts(11))).foregroundStyle(.secondary)
         }
         .padding(28).frame(width: 340)
     }
@@ -30,19 +30,19 @@ struct AboutView: View {
             VStack(spacing: 8) {
                 Text("Version \(info.version) is available").fontWeight(.medium)
                 if !info.notes.isEmpty {
-                    Text(info.notes.prefix(4).joined(separator: "\n")).font(.caption).foregroundStyle(.secondary)
+                    Text(info.notes.prefix(4).joined(separator: "\n")).font(.system(size: ts(11))).foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
                 }
                 Button("Update Now") { updates.install(info) }.buttonStyle(.borderedProminent)
             }
         case .installing(let msg, let f):
             VStack(spacing: 6) {
-                ProgressView(value: f).frame(width: 220)
-                Text(msg).font(.caption).foregroundStyle(.secondary)
+                ProgressView(value: f).frame(width: 220).accessibilityLabel("Update progress")
+                Text(msg).font(.system(size: ts(11))).foregroundStyle(.secondary)
             }
         case .failed(let msg):
             VStack(spacing: 6) {
-                Text(msg).font(.caption).foregroundStyle(.red).multilineTextAlignment(.center)
+                Text(msg).font(.system(size: ts(11))).foregroundStyle(.red).multilineTextAlignment(.center)
                 Button("Try Again") { updates.check() }.controlSize(.small)
             }
         }

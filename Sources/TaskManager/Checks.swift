@@ -18,6 +18,10 @@ enum Checks {
         check(Rates.format(0) == "0 B/s" && Rates.format(2_500_000) == "2.5 MB/s", "rate format: \(Rates.format(0)) / \(Rates.format(2_500_000))")
         check(Rates.stateName(2) == "Running" && Rates.stateName(99) == "–", "process state names")
 
+        check(Rates.format(.nan) == "0 B/s" && Rates.format(.infinity) == "0 B/s" && Rates.format(-5) == "0 B/s", "rate format survives NaN and infinity")
+        check(Rates.sane(.infinity) == 0 && Rates.sane(.nan) == 0 && Rates.sane(-1) == 0 && Rates.sane(3) == 3, "sane rates")
+        check(MenuBarLabel.rate(.nan) == "0 B/s" && MenuBarLabel.rate(.infinity) == "0 B/s", "menu bar rate survives NaN and infinity")
+
         // Columns
         check(ProcColumn.decode(nil) == ProcColumn.defaults, "default columns")
         check(ProcColumn.decode("pid,cpu,bogus,cpu") == [.cpu, .pid], "columns: unknown dropped, order canonical")
@@ -70,6 +74,13 @@ enum Checks {
         check(!d.path.isEmpty, "own executable path")
         check(d.fdCount > 0, "own open files")
         check(d.signing.kind != "Unknown", "own signing status: \(d.signing.kind)")
+
+        // Code-signature labels come from the certificate chain
+        let terminal = ProcInspector.signing(path: "/System/Applications/Utilities/Terminal.app/Contents/MacOS/Terminal")
+        check(terminal.kind == "Apple" && terminal.valid, "Terminal is labelled Apple: \(terminal.kind)")
+        let mine = ProcInspector.signing(path: Bundle.main.executablePath ?? "")
+        check(mine.kind == "Ad hoc" || mine.kind == "Developer ID", "own signature label: \(mine.kind)")
+        check(ProcInspector.signing(path: "/usr/bin/true").kind != "Unverified certificate", "system tools are not unverified")
 
         // Listening socket shows up as an open port
         let sock = socket(AF_INET, SOCK_STREAM, 0)

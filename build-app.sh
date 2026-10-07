@@ -27,5 +27,5 @@ cat > "$APP/Contents/Info.plist" <<PL
 <key>NSHighResolutionCapable</key><true/>
 </dict></plist>
 PL
-codesign --force --sign - "$APP"
+codesign --force --sign - --options runtime "$APP"
 echo "Built $APP $VER ($BUILD)"

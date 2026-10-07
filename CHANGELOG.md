@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.4.1 (2026-10-07)
+- **Security and accessibility hardening.** Code-signature labels now come from the certificate chain (a look-alike certificate is reported as unverified instead of Apple or Developer ID), update URLs reject path tricks, the installer re-verifies the new app after copying it, rates can no longer crash on NaN or infinity, and the app runs with the hardened runtime. Accessibility: VoiceOver labels and values everywhere, keyboard navigation of the process list (↑ ↓ Return Esc, ⌘I, ⌘⌫), a **Text size** setting, Reduce Motion and Increase Contrast support, and higher-contrast secondary text.
+
 ## 0.4.0 (2026-10-07)
 - **Menu bar mode**: a live CPU / memory / GPU / disk / network readout in the menu bar with a popover of graphs and your busiest apps, plus an option to hide the Dock icon. Turn it on in Settings → Menu bar.
 

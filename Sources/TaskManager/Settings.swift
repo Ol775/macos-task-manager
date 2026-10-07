@@ -36,6 +36,7 @@ final class AppSettings: ObservableObject {
     @Published var networkColor: Color { didSet { Self.d.set(networkColor.hex, forKey: "networkColor") } }
     @Published var theme: AccentTheme { didSet { Self.d.set(theme.rawValue, forKey: "theme") } }
     @Published var customAccent: Color { didSet { Self.d.set(customAccent.hex, forKey: "customAccent") } }
+    @Published var textSize: TextSize { didSet { Self.d.set(textSize.rawValue, forKey: "textSize"); TextScale.factor = textSize.scale } }
     @Published var corners: CardCorners { didSet { Self.d.set(corners.rawValue, forKey: "corners") } }
     @Published var columns: [ProcColumn] { didSet { Self.d.set(ProcColumn.encode(columns), forKey: "columns") } }
     @Published var sidebarCollapsed: Bool { didSet { Self.d.set(sidebarCollapsed, forKey: "sidebarCollapsed") } }
@@ -59,6 +60,9 @@ final class AppSettings: ObservableObject {
         networkColor = Color(hex: d.string(forKey: "networkColor") ?? Self.defaultColors.network)
         theme = AccentTheme(rawValue: d.string(forKey: "theme") ?? "") ?? .ocean
         customAccent = Color(hex: d.string(forKey: "customAccent") ?? "5E5CE6")
+        let size = TextSize(rawValue: d.string(forKey: "textSize") ?? "") ?? .standard
+        textSize = size
+        TextScale.factor = size.scale
         corners = CardCorners(rawValue: d.string(forKey: "corners") ?? "") ?? .standard
         columns = ProcColumn.decode(d.string(forKey: "columns"))
         sidebarCollapsed = d.bool(forKey: "sidebarCollapsed")
@@ -77,7 +81,7 @@ final class AppSettings: ObservableObject {
     /// Accent for fills that carry white text; always the deep variant so the text stays readable.
     var accentFill: Color { Color(nsColor: theme.colors(custom: customAccent.hex).1) }
     /// Re-renders everything that caches dynamic colours when the theme changes.
-    var themeKey: String { theme.rawValue + (theme == .custom ? customAccent.hex : "") + corners.rawValue }
+    var themeKey: String { theme.rawValue + (theme == .custom ? customAccent.hex : "") + corners.rawValue + textSize.rawValue }
 
     var oled: Bool { appearance == .oled }
 

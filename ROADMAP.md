@@ -16,7 +16,7 @@ Where Task Manager is heading. Nothing here is a promise or a date; the order is
 - **Per-process GPU.** Only if macOS exposes it without private APIs.
 - **App history.** Cumulative CPU time per app over a session, like the Windows "App history" tab.
 - **Export.** Save a snapshot of the process list or system info as CSV or JSON.
-- **Keyboard and accessibility pass.** Full keyboard control of the process list and a VoiceOver review.
+- **Accessibility follow-ups.** A table view of each graph's data and audio graphs for VoiceOver.
 - **Localisation.** Start with the strings already in the UI.
 
 ## Needs a decision or outside help

@@ -9,7 +9,7 @@
 ![Apple silicon and Intel](https://img.shields.io/badge/arm64%20%7C%20x86__64-universal-0a84ff)
 ![Swift 6](https://img.shields.io/badge/Swift-SwiftUI-0a84ff)
 
-**Task Manager** is a free, open-source Mac app that works like the Windows Task Manager: a sortable process list with **End Task**, live **CPU, memory, GPU, disk and network** graphs, and a system overview. It is written in Swift and SwiftUI with no third-party dependencies, runs natively on Apple silicon and Intel, and has Light, Dark and OLED Black themes. Current version: <!--v-->v0.4.0<!--/v-->.
+**Task Manager** is a free, open-source Mac app that works like the Windows Task Manager: a sortable process list with **End Task**, live **CPU, memory, GPU, disk and network** graphs, and a system overview. It is written in Swift and SwiftUI with no third-party dependencies, runs natively on Apple silicon and Intel, and has Light, Dark and OLED Black themes. Current version: <!--v-->v0.4.1<!--/v-->.
 
 ## Features
 
@@ -19,6 +19,7 @@
 - **System** – model, chip, cores, memory, graphics, macOS version and build, up time, thermal state, storage and battery. The hostname and serial number are never read.
 - **Menu bar mode** (optional) – a live readout in the menu bar (CPU, memory, GPU, disk and network, in any combination) with a popover of graphs and your busiest apps, and an option to hide the Dock icon. Turn it on in Settings → Menu bar.
 - **Make it yours** – System / Light / Dark / **OLED Black** appearance, six accent colours plus a custom one, card corner style and per-graph colours. Settings are a page inside the window (⌘,).
+- **Accessible** – VoiceOver labels throughout, full keyboard control of the process list, a Text size setting, Reduce Motion and Increase Contrast support. See [ACCESSIBILITY.md](ACCESSIBILITY.md).
 - **Signed updates** – checks GitHub releases and installs only Ed25519-signed builds. See [SECURITY.md](SECURITY.md).
 - **Private** – no telemetry, accounts or analytics. See [PRIVACY.md](PRIVACY.md).
 
@@ -92,7 +93,7 @@ TaskManager.app/Contents/MacOS/TaskManager --selftest   # updater, sampling and 
 - [CHANGELOG.md](CHANGELOG.md) – what changed in each version
 - [ROADMAP.md](ROADMAP.md) – what's next
 - [CONTRIBUTING.md](CONTRIBUTING.md) – building, tests and pull requests
-- [SECURITY.md](SECURITY.md) and [PRIVACY.md](PRIVACY.md)
+- [SECURITY.md](SECURITY.md), [PRIVACY.md](PRIVACY.md) and [ACCESSIBILITY.md](ACCESSIBILITY.md)
 
 Releases are cut with `./bump.sh` and `./release.sh`, which build the universal DMG, sign it with an offline key and update the Homebrew cask. `tools/makeicon.swift` regenerates the icon and `docs/make-banner.swift` the banner.
 

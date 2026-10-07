@@ -24,6 +24,7 @@ CI runs the same two commands on every push and pull request.
 - Run `./bump.sh patch "short note"` when you change the app's behaviour. It updates `VERSION` and the changelog.
 - Native and light: SwiftUI and system frameworks only, no third-party dependencies.
 - Screenshots in the repo must not show personal information (usernames, private app names, hostnames).
+- New controls need an accessibility label (icon-only buttons especially) and must work from the keyboard. Run `tools/axaudit.swift` against the running app to catch unlabeled controls; see [ACCESSIBILITY.md](ACCESSIBILITY.md).
 - The app is macOS only. Don't add telemetry or network requests other than the update check.
 - Changes to the updater (`Updater.swift`) need extra care; explain how the trust model in [SECURITY.md](SECURITY.md) still holds.
 

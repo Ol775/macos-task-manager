@@ -29,7 +29,7 @@ enum MenuBarLabel {
     struct Values { var cpu = 0.0, memory = 0.0, gpu = 0.0, disk = 0.0, network = 0.0 }   // percentages; disk and network in bytes per second
 
     static func rate(_ v: Double) -> String {
-        if v < 1 { return "0 B/s" }
+        guard v.isFinite, v >= 1 else { return "0 B/s" }
         let units = ["B/s", "KB/s", "MB/s", "GB/s"]
         var x = v, i = 0
         while x >= 1000, i < units.count - 1 { x /= 1000; i += 1 }
@@ -138,9 +138,9 @@ struct MenuBarPopover: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Text("Task Manager").font(.system(size: 15, weight: .bold, design: .rounded))
+                Text("Task Manager").font(.system(size: ts(15), weight: .bold, design: .rounded))
                 Spacer()
-                Text(SystemInfo.thermal == "Nominal" ? "" : "Thermal: \(SystemInfo.thermal)").font(.caption).foregroundStyle(.orange)
+                Text(SystemInfo.thermal == "Nominal" ? "" : "Thermal: \(SystemInfo.thermal)").font(.system(size: ts(11))).foregroundStyle(.orange)
             }
             VStack(spacing: 0) {
                 metric(.cpu, value: String(format: "%.0f%%", m.cpuHistory.last ?? 0), series: Series(name: "CPU", data: m.cpuHistory, color: Color.metric(s.cpuColor)), scale: .percent)
@@ -160,15 +160,16 @@ struct MenuBarPopover: View {
             .padding(.horizontal, 12).card()
 
             VStack(alignment: .leading, spacing: 6) {
-                Text("Busiest apps").font(.system(size: 12, weight: .semibold)).foregroundStyle(.secondary)
+                Text("Busiest apps").font(.system(size: ts(12), weight: .semibold)).foregroundStyle(.secondary)
                 ForEach(top) { p in
                     HStack(spacing: 8) {
-                        if let icon = p.icon { Image(nsImage: icon).resizable().frame(width: 18, height: 18) }
-                        else { Image(systemName: "gearshape.fill").frame(width: 18, height: 18).foregroundStyle(.secondary) }
+                        if let icon = p.icon { Image(nsImage: icon).resizable().frame(width: ts(18), height: ts(18)) }
+                        else { Image(systemName: "gearshape.fill").frame(width: ts(18), height: ts(18)).foregroundStyle(.secondary) }
                         Text(p.name).lineLimit(1)
                         Spacer(minLength: 8)
                         Text(String(format: "%.1f%%", p.cpu)).monospacedDigit().foregroundStyle(.secondary)
-                    }.font(.system(size: 12.5))
+                    }.font(.system(size: ts(12.5)))
+                    .accessibilityElement(children: .ignore).accessibilityLabel("\(p.name), \(String(format: "%.1f", p.cpu)) percent CPU")
                 }
             }
             .padding(12).frame(maxWidth: .infinity, alignment: .leading).card()
@@ -176,23 +177,24 @@ struct MenuBarPopover: View {
             HStack(spacing: 8) {
                 Button { open(.processes) } label: { Label("Open Task Manager", systemImage: "macwindow") }
                 Spacer()
-                Button { open(.settings) } label: { Image(systemName: "gearshape") }.help("Settings")
-                Button { NSApp.terminate(nil) } label: { Image(systemName: "power") }.help("Quit Task Manager")
+                Button { open(.settings) } label: { Image(systemName: "gearshape") }.help("Settings").accessibilityLabel("Settings")
+                Button { NSApp.terminate(nil) } label: { Image(systemName: "power") }.help("Quit Task Manager").accessibilityLabel("Quit Task Manager")
             }
             .controlSize(.regular)
         }
-        .padding(14).frame(width: 330)
+        .padding(14).frame(width: ts(330)).font(.system(size: ts(13)))
         .tint(s.accent)
     }
 
     private func metric(_ kind: MenuMetric, value: String, series: Series, scale: Scale, last: Bool = false) -> some View {
         HStack(spacing: 10) {
-            Text(kind.title).font(.system(size: 13, weight: .medium)).frame(width: 64, alignment: .leading)
+            Text(kind.title).font(.system(size: ts(13), weight: .medium)).frame(width: ts(64), alignment: .leading)
             Sparkline(series: [series], scale: scale).frame(height: 24)
-            Text(value).font(.system(size: 13, weight: .semibold)).monospacedDigit().frame(width: 74, alignment: .trailing)
+            Text(value).font(.system(size: ts(13), weight: .semibold)).monospacedDigit().frame(width: ts(78), alignment: .trailing)
         }
         .padding(.vertical, 7)
         .overlay(alignment: .bottom) { if !last { Divider().opacity(0.5) } }
+        .accessibilityElement(children: .ignore).accessibilityLabel(kind.title).accessibilityValue(value)
     }
 
     private func open(_ page: Item) {
