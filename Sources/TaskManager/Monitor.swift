@@ -8,6 +8,7 @@ struct Proc: Identifiable {
     let isApp: Bool
     var cpu: Double      // percent of total CPU capacity, like Windows
     var mem: UInt64      // resident bytes
+    var started: UInt64  // process start time (µs since epoch), to tell a pid from a later process that reuses it
     var icon: NSImage?
 }
 
@@ -19,6 +20,8 @@ final class Monitor: ObservableObject {
     @Published var memHistory = [Double](repeating: 0, count: samples)
     @Published var gpuHistory = [Double](repeating: 0, count: samples)
     @Published var memUsed: UInt64 = 0
+    @Published var memWired: UInt64 = 0
+    @Published var memCompressed: UInt64 = 0
     @Published var gpuMemUsed: UInt64 = 0
     @Published var gpuName = "GPU"
     @Published var gpuCores: Int?
@@ -126,6 +129,9 @@ final class Monitor: ObservableObject {
             }
         }
         guard r == KERN_SUCCESS else { return 0 }
+        let page = UInt64(vm_kernel_page_size)
+        memWired = UInt64(vm.wire_count) * page
+        memCompressed = UInt64(vm.compressor_page_count) * page
         // Matches Activity Monitor's "Memory Used": app + wired + compressed
         return (UInt64(vm.active_count) + UInt64(vm.wire_count) + UInt64(vm.compressor_page_count)) * UInt64(vm_kernel_page_size)
     }
@@ -151,12 +157,15 @@ final class Monitor: ObservableObject {
             let size = Int32(MemoryLayout<proc_taskinfo>.size)
             // Fails for other users' processes unless root; those are skipped.
             guard proc_pidinfo(pid, PROC_PIDTASKINFO, 0, &ti, size) == size else { continue }
+            var bsd = proc_bsdinfo()
+            let bsdSize = Int32(MemoryLayout<proc_bsdinfo>.size)
+            let started = proc_pidinfo(pid, PROC_PIDTBSDINFO, 0, &bsd, bsdSize) == bsdSize ? bsd.pbi_start_tvsec * 1_000_000 + bsd.pbi_start_tvusec : 0
             let abs = ti.pti_total_user + ti.pti_total_system
             let cpuNs = abs * UInt64(timebase.numer) / UInt64(timebase.denom)
             ns[pid] = cpuNs
             let cpu = lastProcNs[pid].map { cpuNs >= $0 ? Double(cpuNs - $0) / wall * 100 / Double(cores) : 0 } ?? 0
             let name = apps[pid]?.localizedName ?? (proc_name(pid, &nameBuf, 256) > 0 ? String(cString: nameBuf) : "pid \(pid)")
-            out.append(Proc(id: pid, name: name, isApp: apps[pid] != nil, cpu: cpu, mem: ti.pti_resident_size, icon: apps[pid]?.icon))
+            out.append(Proc(id: pid, name: name, isApp: apps[pid] != nil, cpu: cpu, mem: ti.pti_resident_size, started: started, icon: apps[pid]?.icon))
         }
         lastProcNs = ns
         pidTotal = max(n, 0)

@@ -145,16 +145,16 @@ enum Updater {
 
     /// Downloads and checks the release; installs nothing unless the signature, checksum, bundle id, version and code
     /// signature all pass. Blocking: call from a background queue. Returns the verified app, or an error message.
-    static func prepare(_ info: UpdateInfo, progress: @escaping (String, Double) -> Void) -> (app: URL?, error: String?) {
+    static func prepare(_ info: UpdateInfo, progress: @escaping (String, Double) -> Void) -> (app: URL?, hash: String?, error: String?) {
         let fm = FileManager.default
         guard let dmgURL = info.dmgURL, isTrustedAsset(dmgURL), let want = info.sha256, let sigURL = info.sigURL else {
-            return (nil, "This release isn’t signed, so it won’t be installed automatically.")
+            return (nil, nil, "This release isn’t signed, so it won’t be installed automatically.")
         }
         let root = cachesDir.appendingPathComponent("update-\(Int(Date().timeIntervalSince1970))")
         guard (try? fm.createDirectory(at: root, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])) != nil else {
-            return (nil, "Couldn’t create a work folder.")
+            return (nil, nil, "Couldn’t create a work folder.")
         }
-        func fail(_ m: String) -> (URL?, String?) { try? fm.removeItem(at: root); return (nil, m) }
+        func fail(_ m: String) -> (URL?, String?, String?) { try? fm.removeItem(at: root); return (nil, nil, m) }
 
         progress("Downloading version \(info.version)…", 0)
         let dl = RedirectGuard()
@@ -201,17 +201,23 @@ enum Updater {
         }
         try? fm.removeItem(at: dmg)
         progress("Ready", 0.96)
-        return (app, nil)
+        return (app, executableHash(app), nil)
+    }
+
+    /// Fingerprint of the app's executable, taken when the update is verified and re-checked just before it is installed.
+    static func executableHash(_ app: URL) -> String? {
+        (try? Data(contentsOf: app.appendingPathComponent("Contents/MacOS/TaskManager"), options: .mappedIfSafe)).map(sha256Hex)
     }
 
     /// Hands the verified app to a helper that waits for this app to quit, swaps it in (keeping the old one as a backup)
     /// and relaunches. Returns an error message, or nil once the hand-off has started – the caller should then quit.
-    static func apply(_ app: URL, dest: URL = Bundle.main.bundleURL) -> String? {
+    static func apply(_ app: URL, expectedHash: String?, dest: URL = Bundle.main.bundleURL) -> String? {
         let fm = FileManager.default
         guard app.path.hasPrefix(cachesDir.path + "/"), dest.pathExtension == "app",
               run("/usr/bin/codesign", ["--verify", "--deep", "--strict", app.path]) == 0 else {
             return "The update didn’t pass its final check, so it wasn’t installed."
         }
+        guard let expectedHash, executableHash(app) == expectedHash else { return "The update changed after it was verified, so it wasn’t installed." }
         guard !dest.path.hasPrefix("/Volumes/"), fm.isWritableFile(atPath: dest.deletingLastPathComponent().path) else {
             return "Task Manager can’t replace itself here. Move it to Applications and try again."
         }
@@ -275,9 +281,10 @@ final class UpdateModel: ObservableObject {
         DispatchQueue.global().async {
             let r = Updater.prepare(info) { msg, f in DispatchQueue.main.async { self.status = .installing(msg, f) } }
             guard let app = r.app else { DispatchQueue.main.async { self.status = .failed(r.error ?? "Update failed.") }; return }
+            let hash = r.hash
             DispatchQueue.main.async {
                 self.status = .installing("Installing…", 0.98)
-                if let e = Updater.apply(app) { self.status = .failed(e) } else { NSApp.terminate(nil) }
+                if let e = Updater.apply(app, expectedHash: hash) { self.status = .failed(e) } else { NSApp.terminate(nil) }
             }
         }
     }

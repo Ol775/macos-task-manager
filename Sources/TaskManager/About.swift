@@ -10,7 +10,7 @@ struct AboutView: View {
             Text("Version \(AppInfo.version) (\(AppInfo.build))").foregroundStyle(.secondary)
             updateSection.padding(.top, 10)
             Link("GitHub", destination: URL(string: "https://github.com/\(Updater.repo)")!).padding(.top, 6)
-            Text("© 2026 Ol775").font(.caption).foregroundStyle(.tertiary)
+            Text("© 2026 Ol775 · MIT License").font(.caption).foregroundStyle(.tertiary)
         }
         .padding(28).frame(width: 340)
     }

@@ -44,7 +44,7 @@ struct AppCommands: Commands {
     }
 }
 
-enum Item: Hashable { case processes, cpu, memory, gpu }
+enum Item: Hashable { case processes, system, cpu, memory, gpu }
 
 struct ContentView: View {
     @EnvironmentObject var m: Monitor
@@ -58,6 +58,8 @@ struct ContentView: View {
             List(selection: $item) {
                 Label("Processes", systemImage: "list.bullet.rectangle")
                     .tag(Item.processes)
+                Label("System", systemImage: "desktopcomputer")
+                    .tag(Item.system)
                 Section("Performance") {
                     tile(.cpu, "CPU", s.cpuColor, m.cpuHistory)
                     tile(.memory, "Memory", s.memoryColor, m.memHistory)
@@ -66,17 +68,24 @@ struct ContentView: View {
             }
             .navigationSplitViewColumnWidth(min: 210, ideal: 240, max: 300)
             .safeAreaInset(edge: .bottom) {
-                if let info = updates.available {
-                    Button { openWindow(id: "about") } label: {
-                        Label("Update available: \(info.version)", systemImage: "arrow.down.circle.fill")
-                            .font(.system(size: 12, weight: .medium))
+                VStack(alignment: .leading, spacing: 8) {
+                    if let info = updates.available {
+                        Button { openWindow(id: "about") } label: {
+                            Label("Update available: \(info.version)", systemImage: "arrow.down.circle.fill")
+                                .font(.system(size: 12, weight: .medium))
+                        }
+                        .buttonStyle(.borderless)
                     }
-                    .buttonStyle(.borderless).padding(10)
+                    SettingsLink { Label("Settings", systemImage: "gearshape").font(.system(size: 13)) }
+                        .buttonStyle(.borderless).foregroundStyle(.secondary)
                 }
+                .padding(.horizontal, 14).padding(.vertical, 10)
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
         } detail: {
             switch item ?? .processes {
             case .processes: ProcessesView()
+            case .system: SystemView()
             case .cpu: CPUDetail()
             case .memory: MemoryDetail()
             case .gpu: GPUDetail()
