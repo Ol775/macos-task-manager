@@ -65,6 +65,10 @@ No telemetry, accounts or analytics. The only network request is the update chec
 
 macOS only lets an unprivileged app inspect processes owned by the same user, so system and other users' processes aren't listed. Settings → Permissions shows the count.
 
+## Roadmap
+
+Disk and Network pages, more process columns, a menu bar mode and alerts are next. See [ROADMAP.md](ROADMAP.md).
+
 ## Releasing
 
 `./bump.sh minor "note"` updates `VERSION` and the changelog. After building and pushing, `./release.sh "note"` builds the universal DMG, signs it with the offline release key and publishes the GitHub release. `tools/makeicon.swift` regenerates the icon.
