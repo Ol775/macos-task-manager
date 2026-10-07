@@ -1,7 +1,5 @@
 import SwiftUI
 
-private func bytes(_ b: UInt64) -> String { ByteCountFormatter.string(fromByteCount: Int64(b), countStyle: .memory) }
-
 struct SystemView: View {
     @EnvironmentObject var m: Monitor
     @EnvironmentObject var settings: AppSettings
@@ -9,10 +7,7 @@ struct SystemView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(SystemInfo.modelName).font(.system(size: 26, weight: .semibold, design: .rounded))
-                    Text("\(m.cpuName) · \(SystemInfo.macOS)").foregroundStyle(.secondary)
-                }
+                PageHeader(title: SystemInfo.modelName, subtitle: "\(m.cpuName) · \(SystemInfo.macOS)") { EmptyView() }
                 card("Hardware", [
                     ("Model", SystemInfo.modelName),
                     ("Identifier", SystemInfo.modelIdentifier),
@@ -31,7 +26,7 @@ struct SystemView: View {
                     let used = Double(s.total - s.available) / Double(max(s.total, 1))
                     VStack(alignment: .leading, spacing: 10) {
                         Text("Storage").font(.headline)
-                        ProgressView(value: used).tint(settings.cpuColor)
+                        CapsuleBar(value: used, color: Color.metric(settings.diskColor), height: 8)
                         HStack {
                             Text("\(ByteCountFormatter.string(fromByteCount: s.total - s.available, countStyle: .file)) used")
                             Spacer()
@@ -39,8 +34,7 @@ struct SystemView: View {
                                 .foregroundStyle(.secondary)
                         }.font(.system(size: 12.5)).monospacedDigit()
                     }
-                    .padding(16).background(settings.cardColor, in: RoundedRectangle(cornerRadius: 12))
-                    .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color(nsColor: .separatorColor).opacity(0.6)))
+                    .padding(16).frame(maxWidth: .infinity, alignment: .leading).card()
                 }
                 if let b = SystemInfo.battery {
                     card("Battery", [("Charge", "\(b.percent)%"), ("Power", b.state)])
@@ -48,8 +42,6 @@ struct SystemView: View {
             }
             .padding(24)
         }
-        .navigationTitle("System")
-        .navigationSubtitle(SystemInfo.modelIdentifier)
     }
 
     private func card(_ title: String, _ rows: [(String, String)]) -> some View {
@@ -65,8 +57,6 @@ struct SystemView: View {
                 .font(.system(size: 13)).padding(.vertical, 7)
             }
         }
-        .padding(16).frame(maxWidth: .infinity, alignment: .leading)
-        .background(settings.cardColor, in: RoundedRectangle(cornerRadius: 12))
-        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color(nsColor: .separatorColor).opacity(0.6)))
+        .padding(16).frame(maxWidth: .infinity, alignment: .leading).card()
     }
 }

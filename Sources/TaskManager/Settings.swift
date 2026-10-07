@@ -21,7 +21,7 @@ final class AppSettings: ObservableObject {
         case system = "System", light = "Light", dark = "Dark", oled = "OLED Black"
         var id: String { rawValue }
     }
-    static let defaultColors = (cpu: "0A84FF", memory: "BF5AF2", gpu: "FF9F0A")
+    static let defaultColors = (cpu: "0A84FF", memory: "BF5AF2", gpu: "FF9F0A", disk: "30D158", network: "32ADE6")
     private static let d = UserDefaults.standard
 
     @Published var appearance: Appearance { didSet { Self.d.set(appearance.rawValue, forKey: "appearance"); apply() } }
@@ -31,6 +31,13 @@ final class AppSettings: ObservableObject {
     @Published var cpuColor: Color { didSet { Self.d.set(cpuColor.hex, forKey: "cpuColor") } }
     @Published var memoryColor: Color { didSet { Self.d.set(memoryColor.hex, forKey: "memoryColor") } }
     @Published var gpuColor: Color { didSet { Self.d.set(gpuColor.hex, forKey: "gpuColor") } }
+    @Published var diskColor: Color { didSet { Self.d.set(diskColor.hex, forKey: "diskColor") } }
+    @Published var networkColor: Color { didSet { Self.d.set(networkColor.hex, forKey: "networkColor") } }
+    @Published var theme: AccentTheme { didSet { Self.d.set(theme.rawValue, forKey: "theme") } }
+    @Published var customAccent: Color { didSet { Self.d.set(customAccent.hex, forKey: "customAccent") } }
+    @Published var corners: CardCorners { didSet { Self.d.set(corners.rawValue, forKey: "corners") } }
+    @Published var columns: [ProcColumn] { didSet { Self.d.set(ProcColumn.encode(columns), forKey: "columns") } }
+    @Published var sidebarCollapsed: Bool { didSet { Self.d.set(sidebarCollapsed, forKey: "sidebarCollapsed") } }
 
     init() {
         let d = Self.d
@@ -42,7 +49,24 @@ final class AppSettings: ObservableObject {
         cpuColor = Color(hex: d.string(forKey: "cpuColor") ?? Self.defaultColors.cpu)
         memoryColor = Color(hex: d.string(forKey: "memoryColor") ?? Self.defaultColors.memory)
         gpuColor = Color(hex: d.string(forKey: "gpuColor") ?? Self.defaultColors.gpu)
+        diskColor = Color(hex: d.string(forKey: "diskColor") ?? Self.defaultColors.disk)
+        networkColor = Color(hex: d.string(forKey: "networkColor") ?? Self.defaultColors.network)
+        theme = AccentTheme(rawValue: d.string(forKey: "theme") ?? "") ?? .ocean
+        customAccent = Color(hex: d.string(forKey: "customAccent") ?? "5E5CE6")
+        corners = CardCorners(rawValue: d.string(forKey: "corners") ?? "") ?? .standard
+        columns = ProcColumn.decode(d.string(forKey: "columns"))
+        sidebarCollapsed = d.bool(forKey: "sidebarCollapsed")
     }
+
+    /// Accent for icons and text: brighter in dark mode, deeper in light mode.
+    var accent: Color {
+        let (dark, light) = theme.colors(custom: customAccent.hex)
+        return Color(nsColor: .dynamic(dark: dark, light: light))
+    }
+    /// Accent for fills that carry white text; always the deep variant so the text stays readable.
+    var accentFill: Color { Color(nsColor: theme.colors(custom: customAccent.hex).1) }
+    /// Re-renders everything that caches dynamic colours when the theme changes.
+    var themeKey: String { theme.rawValue + (theme == .custom ? customAccent.hex : "") + corners.rawValue }
 
     var oled: Bool { appearance == .oled }
 
@@ -61,6 +85,8 @@ final class AppSettings: ObservableObject {
         cpuColor = Color(hex: Self.defaultColors.cpu)
         memoryColor = Color(hex: Self.defaultColors.memory)
         gpuColor = Color(hex: Self.defaultColors.gpu)
+        diskColor = Color(hex: Self.defaultColors.disk)
+        networkColor = Color(hex: Self.defaultColors.network)
     }
 }
 
@@ -69,9 +95,10 @@ struct SettingsView: View {
         TabView {
             GeneralSettings().tabItem { Label("General", systemImage: "gearshape") }
             ColourSettings().tabItem { Label("Colours", systemImage: "paintpalette") }
+            ColumnSettings().tabItem { Label("Columns", systemImage: "tablecells") }
             PermissionsSettings().tabItem { Label("Permissions", systemImage: "lock.shield") }
         }
-        .frame(width: 500, height: 360)
+        .frame(width: 520, height: 440)
     }
 }
 
@@ -81,6 +108,13 @@ struct GeneralSettings: View {
         Form {
             Picker("Appearance", selection: $s.appearance) {
                 ForEach(AppSettings.Appearance.allCases) { Text($0.rawValue).tag($0) }
+            }.pickerStyle(.segmented)
+            Picker("Accent", selection: $s.theme) {
+                ForEach(AccentTheme.allCases) { Text($0.label).tag($0) }
+            }
+            if s.theme == .custom { ColorPicker("Custom accent", selection: $s.customAccent, supportsOpacity: false) }
+            Picker("Card corners", selection: $s.corners) {
+                ForEach(CardCorners.allCases) { Text($0.label).tag($0) }
             }.pickerStyle(.segmented)
             Picker("Update every", selection: $s.interval) {
                 Text("0.5 seconds").tag(0.5)
@@ -102,7 +136,28 @@ struct ColourSettings: View {
             ColorPicker("CPU", selection: $s.cpuColor, supportsOpacity: false)
             ColorPicker("Memory", selection: $s.memoryColor, supportsOpacity: false)
             ColorPicker("GPU", selection: $s.gpuColor, supportsOpacity: false)
+            ColorPicker("Disk", selection: $s.diskColor, supportsOpacity: false)
+            ColorPicker("Network", selection: $s.networkColor, supportsOpacity: false)
             Button("Reset to Defaults") { s.resetColors() }
+        }
+        .formStyle(.grouped)
+    }
+}
+
+struct ColumnSettings: View {
+    @EnvironmentObject var s: AppSettings
+    var body: some View {
+        Form {
+            Section {
+                ForEach(ProcColumn.optional) { c in
+                    Toggle(c.title, isOn: Binding(
+                        get: { s.columns.contains(c) },
+                        set: { on in s.columns = ProcColumn.optional.filter { $0 == c ? on : s.columns.contains($0) } }))
+                }
+                Button("Reset to Defaults") { s.columns = ProcColumn.defaults }
+            } footer: {
+                Text("Name is always shown. You can also right-click the column headings in Processes.")
+            }
         }
         .formStyle(.grouped)
     }

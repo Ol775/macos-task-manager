@@ -3,7 +3,7 @@ import SwiftUI
 @main
 struct TaskManagerApp: App {
     init() {
-        if CommandLine.arguments.contains("--selftest") { let ok = Updater.selfTest(); print(ok ? "selftest ok" : "selftest FAILED"); exit(ok ? 0 : 1) }
+        if CommandLine.arguments.contains("--selftest") { let ok = Updater.selfTest() && Checks.run(); print(ok ? "selftest ok" : "selftest FAILED"); exit(ok ? 0 : 1) }
     }
 
     @StateObject private var monitor = Monitor()
@@ -18,8 +18,7 @@ struct TaskManagerApp: App {
                 .onAppear { settings.apply(); monitor.start(interval: settings.interval) }
                 .onChange(of: settings.interval) { _, v in monitor.setInterval(v) }
         }
-        .defaultSize(width: 1020, height: 680)
-        .windowToolbarStyle(.unified)
+        .defaultSize(width: 1120, height: 720)
         .commands { AppCommands(updates: updates) }
 
         Window("About Task Manager", id: "about") {
@@ -44,69 +43,137 @@ struct AppCommands: Commands {
     }
 }
 
-enum Item: Hashable { case processes, system, cpu, memory, gpu }
+enum Item: Hashable, CaseIterable {
+    case processes, system, cpu, memory, gpu, disk, network
+    var title: String {
+        switch self {
+        case .processes: "Processes"; case .system: "System"; case .cpu: "CPU"; case .memory: "Memory"
+        case .gpu: "GPU"; case .disk: "Disk"; case .network: "Network"
+        }
+    }
+    var icon: String { self == .processes ? "list.bullet.rectangle" : "desktopcomputer" }
+}
 
 struct ContentView: View {
     @EnvironmentObject var m: Monitor
     @EnvironmentObject var s: AppSettings
     @EnvironmentObject var updates: UpdateModel
     @Environment(\.openWindow) private var openWindow
-    @State private var item: Item? = .processes
+    @State private var item: Item = .processes
+
+    private var pages: [Item] {
+        Item.allCases.filter { ($0 != .gpu || m.gpuAvailable) && ($0 != .disk || m.diskAvailable) }
+    }
 
     var body: some View {
-        NavigationSplitView {
-            List(selection: $item) {
-                Label("Processes", systemImage: "list.bullet.rectangle")
-                    .tag(Item.processes)
-                Label("System", systemImage: "desktopcomputer")
-                    .tag(Item.system)
-                Section("Performance") {
-                    tile(.cpu, "CPU", s.cpuColor, m.cpuHistory)
-                    tile(.memory, "Memory", s.memoryColor, m.memHistory)
-                    if m.gpuAvailable { tile(.gpu, "GPU", s.gpuColor, m.gpuHistory) }
+        let narrow = s.sidebarCollapsed
+        HStack(spacing: 0) {
+            sidebar(narrow: narrow)
+                .frame(width: narrow ? 68 : 232).frame(maxHeight: .infinity)
+                .background(s.oled ? Color.black : Color(nsColor: .controlBackgroundColor).opacity(0.6))
+            Divider()
+            Group {
+                switch item {
+                case .processes: ProcessesView()
+                case .system: SystemView()
+                case .cpu: CPUDetail()
+                case .memory: MemoryDetail()
+                case .gpu: GPUDetail()
+                case .disk: DiskDetail()
+                case .network: NetworkDetail()
                 }
             }
-            .navigationSplitViewColumnWidth(min: 210, ideal: 240, max: 300)
-            .safeAreaInset(edge: .bottom) {
-                VStack(alignment: .leading, spacing: 8) {
-                    if let info = updates.available {
-                        Button { openWindow(id: "about") } label: {
-                            Label("Update available: \(info.version)", systemImage: "arrow.down.circle.fill")
-                                .font(.system(size: 12, weight: .medium))
-                        }
-                        .buttonStyle(.borderless)
-                    }
-                    SettingsLink { Label("Settings", systemImage: "gearshape").font(.system(size: 13)) }
-                        .buttonStyle(.borderless).foregroundStyle(.secondary)
-                }
-                .padding(.horizontal, 14).padding(.vertical, 10)
-                .frame(maxWidth: .infinity, alignment: .leading)
-            }
-        } detail: {
-            switch item ?? .processes {
-            case .processes: ProcessesView()
-            case .system: SystemView()
-            case .cpu: CPUDetail()
-            case .memory: MemoryDetail()
-            case .gpu: GPUDetail()
-            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(s.oled ? Color.black : Color(nsColor: .windowBackgroundColor))
         }
-        .frame(minWidth: 780, minHeight: 500)
-        .oledSurfaces(s.oled)
+        .tint(s.accent)
+        .id(s.themeKey)
+        .frame(minWidth: 1040, minHeight: 560)
         .background(OLEDWindow(on: s.oled))
         .onAppear { if s.autoUpdate { updates.check() } }
     }
 
-    private func tile(_ i: Item, _ title: String, _ color: Color, _ data: [Double]) -> some View {
-        HStack(spacing: 10) {
-            Sparkline(data: data, color: color).frame(width: 52, height: 32)
-            VStack(alignment: .leading, spacing: 1) {
-                Text(title).font(.system(size: 13, weight: .medium))
-                Text(String(format: "%.0f%%", data.last ?? 0))
-                    .font(.system(size: 11.5)).monospacedDigit().foregroundStyle(.secondary)
+    private func sidebar(narrow: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Button { withAnimation(.easeInOut(duration: 0.2)) { s.sidebarCollapsed.toggle() } } label: {
+                Image(systemName: "sidebar.left").font(.system(size: 16)).foregroundStyle(.secondary).frame(width: 28, height: 28)
+                    .padding(.horizontal, 8).padding(.vertical, 4)
+            }
+            .buttonStyle(.plain).help(narrow ? "Show sidebar labels" : "Collapse to icons").padding(.bottom, 4)
+
+            ForEach(Array(pages.enumerated()), id: \.element) { index, page in
+                if page == .cpu && !narrow {
+                    Text("PERFORMANCE").font(.system(size: 10.5, weight: .semibold)).foregroundStyle(.secondary)
+                        .padding(.horizontal, 10).padding(.top, 12).padding(.bottom, 2)
+                } else if page == .cpu { Divider().padding(.vertical, 6) }
+                navButton(page, index: index, narrow: narrow)
+            }
+            Spacer()
+            footer(narrow: narrow)
+        }
+        .padding(10)
+    }
+
+    @ViewBuilder private func navButton(_ page: Item, index: Int, narrow: Bool) -> some View {
+        let on = item == page
+        Button { item = page } label: {
+            HStack(spacing: 10) {
+                if let t = tile(page) {
+                    Sparkline(series: t.series, scale: t.scale).frame(width: narrow ? 40 : 46, height: 28)
+                    if !narrow {
+                        VStack(alignment: .leading, spacing: 0) {
+                            Text(page.title).font(.system(size: 13, weight: on ? .semibold : .regular))
+                            Text(t.value).font(.system(size: 11.5)).monospacedDigit().foregroundStyle(.secondary).lineLimit(1)
+                        }
+                    }
+                } else {
+                    Image(systemName: page.icon).font(.system(size: 16)).foregroundStyle(s.accent).frame(width: narrow ? 40 : 46)
+                    if !narrow { Text(page.title).font(.system(size: 13, weight: on ? .semibold : .regular)) }
+                }
+                if !narrow { Spacer(minLength: 0) }
+            }
+            .padding(.horizontal, 8).padding(.vertical, 6)
+            .background(RoundedRectangle(cornerRadius: 9, style: .continuous).fill(on ? (s.oled ? Color(white: 0.16) : s.accent.opacity(0.18)) : .clear))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain).help("\(page.title) (⌘\(index + 1))")
+        .keyboardShortcut(KeyEquivalent(Character("\(index + 1)")), modifiers: .command)
+        .accessibilityLabel(page.title).accessibilityAddTraits(on ? .isSelected : [])
+    }
+
+    private func tile(_ page: Item) -> (series: [Series], scale: Scale, value: String)? {
+        func pct(_ d: [Double]) -> String { String(format: "%.0f%%", d.last ?? 0) }
+        switch page {
+        case .cpu: return ([Series(name: "CPU", data: m.cpuHistory, color: Color.metric(s.cpuColor))], .percent, pct(m.cpuHistory))
+        case .memory: return ([Series(name: "Memory", data: m.memHistory, color: Color.metric(s.memoryColor))], .percent, pct(m.memHistory))
+        case .gpu: return ([Series(name: "GPU", data: m.gpuHistory, color: Color.metric(s.gpuColor))], .percent, pct(m.gpuHistory))
+        case .disk:
+            let sum = zip(m.diskRead, m.diskWrite).map(+)
+            return ([Series(name: "Disk", data: sum, color: Color.metric(s.diskColor))], .rate(floor: 1_000_000), Rates.format(sum.last ?? 0))
+        case .network:
+            let sum = zip(m.netRx["all"] ?? [], m.netTx["all"] ?? []).map(+)
+            let data = sum.isEmpty ? [Double](repeating: 0, count: Monitor.samples) : sum
+            return ([Series(name: "Network", data: data, color: Color.metric(s.networkColor))], .rate(floor: 100_000), Rates.format(data.last ?? 0))
+        default: return nil
+        }
+    }
+
+    private func footer(narrow: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if let info = updates.available {
+                Button { openWindow(id: "about") } label: {
+                    Label(narrow ? "" : "Update available: \(info.version)", systemImage: "arrow.down.circle.fill").font(.system(size: 12, weight: .medium))
+                }.buttonStyle(.borderless).help("Update available: \(info.version)")
+            }
+            SettingsLink { Label(narrow ? "" : "Settings", systemImage: "gearshape").font(.system(size: 13)) }
+                .buttonStyle(.borderless).foregroundStyle(.secondary).help("Settings (⌘,)")
+            if !narrow {
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("Task Manager").font(.system(size: 11, weight: .semibold))
+                    Text("v\(AppInfo.version) · build \(AppInfo.build)").font(.system(size: 10)).foregroundStyle(.secondary)
+                }.padding(.top, 4)
             }
         }
-        .padding(.vertical, 3)
-        .tag(i)
+        .padding(.horizontal, 8).padding(.bottom, 4).frame(maxWidth: .infinity, alignment: narrow ? .center : .leading)
     }
 }

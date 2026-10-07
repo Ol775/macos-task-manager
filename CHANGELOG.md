@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.3.0 (2026-10-07)
+- New **Disk** page: read and write transfer rate across all drives, with a per-process **Disk** column.
+- New **Network** page: send and receive rate for all connections together or for one interface (Wi-Fi, Ethernet, …).
+- More process columns: **User**, **Threads**, **State** and **Started**. Choose them from the Columns button, by right-clicking the headings, or in Settings → Columns; the table scrolls sideways when they don't fit.
+- **Process details** panel (double-click a row, or the Details button): path with Reveal in Finder, parent, open files, code-signature status and open TCP/UDP ports.
+- New look: sidebar with live graphs and an accent pill, large page titles, ring gauges, rounded cards and heat-tinted CPU / Memory / Disk cells. Pick an accent colour (Ocean blue by default) and card corner style in Settings → General; ⌘1–⌘7 switch pages.
+- Light mode review: chart colours deepen on light cards and every accent is checked against the WCAG contrast ratio by `--selftest`.
+- Continuous integration: GitHub Actions builds the app and runs `--selftest` on every push and pull request.
+
 ## 0.2.0 (2026-10-07)
 - New **System** page: model, chip, core layout, memory, graphics, macOS version and build, up time, thermal state, storage and battery. Hostname and serial number are never collected.
 - CPU, Memory and GPU pages show more detail (performance/efficiency cores, wired and compressed memory, thermal state).

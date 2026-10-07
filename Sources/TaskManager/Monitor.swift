@@ -1,6 +1,7 @@
 import AppKit
 import Darwin
 import IOKit
+import SystemConfiguration
 
 struct Proc: Identifiable {
     let id: Int32
@@ -10,6 +11,39 @@ struct Proc: Identifiable {
     var mem: UInt64      // resident bytes
     var started: UInt64  // process start time (µs since epoch), to tell a pid from a later process that reuses it
     var icon: NSImage?
+    var ppid: Int32 = 0
+    var user = ""
+    var threads: Int32 = 0
+    var state = ""
+    var disk: Double = 0 // read + write bytes per second
+}
+
+struct NetInterface: Identifiable {
+    let id: String       // BSD name, e.g. en0
+    let name: String     // "Wi-Fi"
+    var rx: Double = 0   // bytes per second
+    var tx: Double = 0
+}
+
+/// Pure helpers, kept apart from the sampling code so `--selftest` can check them.
+enum Rates {
+    /// Difference of two readings of a counter that wraps at 2^32 (the `if_data` byte counters do).
+    static func delta32(_ old: UInt32, _ new: UInt32) -> UInt64 { UInt64(new &- old) }
+    static func perSecond(_ bytes: UInt64, over ns: UInt64) -> Double { ns == 0 ? 0 : Double(bytes) / (Double(ns) / 1e9) }
+    static func format(_ bytesPerSecond: Double) -> String {
+        if bytesPerSecond < 1 { return "0 B/s" }
+        return ByteCountFormatter.string(fromByteCount: Int64(bytesPerSecond), countStyle: .decimal) + "/s"
+    }
+    /// A round axis maximum at least 20% above `peak`, never below `floor`.
+    static func niceMax(_ peak: Double, floor: Double) -> Double {
+        let target = max(peak * 1.2, floor)
+        let mag = pow(10, (log10(target)).rounded(.down))
+        for m in [1.0, 2, 5, 10] where m * mag >= target { return m * mag }
+        return 10 * mag
+    }
+    static func stateName(_ status: UInt32) -> String {
+        switch status { case 1: "Starting"; case 2: "Running"; case 3: "Sleeping"; case 4: "Stopped"; case 5: "Zombie"; default: "–" }
+    }
 }
 
 @MainActor
@@ -19,6 +53,12 @@ final class Monitor: ObservableObject {
     @Published var cpuHistory = [Double](repeating: 0, count: samples)
     @Published var memHistory = [Double](repeating: 0, count: samples)
     @Published var gpuHistory = [Double](repeating: 0, count: samples)
+    @Published var diskRead = [Double](repeating: 0, count: samples)    // bytes per second
+    @Published var diskWrite = [Double](repeating: 0, count: samples)
+    @Published var diskAvailable = true
+    @Published var interfaces: [NetInterface] = []
+    @Published var netRx: [String: [Double]] = [:]     // per BSD name, plus "all"
+    @Published var netTx: [String: [Double]] = [:]
     @Published var memUsed: UInt64 = 0
     @Published var memWired: UInt64 = 0
     @Published var memCompressed: UInt64 = 0
@@ -41,6 +81,18 @@ final class Monitor: ObservableObject {
 
     private var lastCPUTicks: (busy: Double, total: Double)?
     private var lastProcNs: [Int32: UInt64] = [:]
+    private var lastProcDisk: [Int32: UInt64] = [:]
+    private var lastDisk: (r: UInt64, w: UInt64)?
+    private var lastNet: [String: (rx: UInt32, tx: UInt32)] = [:]
+    private var lastSystemTime = DispatchTime.now().uptimeNanoseconds
+    private var userNames: [uid_t: String] = [:]
+    private lazy var friendlyNames: [String: String] = {
+        var out: [String: String] = [:]
+        for i in (SCNetworkInterfaceCopyAll() as? [SCNetworkInterface]) ?? [] {
+            if let bsd = SCNetworkInterfaceGetBSDName(i) as String?, let n = SCNetworkInterfaceGetLocalizedDisplayName(i) as String? { out[bsd] = n }
+        }
+        return out
+    }()
     private var lastTime = DispatchTime.now().uptimeNanoseconds
     private var timer: Timer?
     private let timebase: mach_timebase_info_data_t = {
@@ -66,12 +118,75 @@ final class Monitor: ObservableObject {
         }
     }
 
-    private func tick() {
+    func tick() {
+        sampleSystemIO()
         push(&cpuHistory, totalCPU())
         memUsed = usedMemory()
         push(&memHistory, Double(memUsed) / Double(memTotal) * 100)
         push(&gpuHistory, sampleGPU())
         procs = sampleProcesses()
+    }
+
+    /// Whole-disk throughput (IOBlockStorageDriver counters) and per-interface network throughput (getifaddrs counters).
+    private func sampleSystemIO() {
+        let now = DispatchTime.now().uptimeNanoseconds
+        let dt = now - lastSystemTime
+        lastSystemTime = now
+
+        let d = diskTotals()
+        diskAvailable = d != nil
+        if let d {
+            if let l = lastDisk, d.r >= l.r, d.w >= l.w {
+                push(&diskRead, Rates.perSecond(d.r - l.r, over: dt)); push(&diskWrite, Rates.perSecond(d.w - l.w, over: dt))
+            } else { push(&diskRead, 0); push(&diskWrite, 0) }
+            lastDisk = d
+        }
+
+        var list: [NetInterface] = []
+        var head: UnsafeMutablePointer<ifaddrs>?
+        if getifaddrs(&head) == 0 {
+            var p = head
+            while let a = p?.pointee {
+                defer { p = a.ifa_next }
+                guard let addr = a.ifa_addr, addr.pointee.sa_family == UInt8(AF_LINK), let data = a.ifa_data else { continue }
+                let name = String(cString: a.ifa_name)
+                guard let nice = friendlyNames[name], a.ifa_flags & UInt32(IFF_UP | IFF_RUNNING) == UInt32(IFF_UP | IFF_RUNNING),
+                      a.ifa_flags & UInt32(IFF_LOOPBACK) == 0 else { continue }
+                let ifd = data.assumingMemoryBound(to: if_data.self).pointee
+                var row = NetInterface(id: name, name: nice)
+                if let l = lastNet[name] {
+                    row.rx = Rates.perSecond(Rates.delta32(l.rx, ifd.ifi_ibytes), over: dt)
+                    row.tx = Rates.perSecond(Rates.delta32(l.tx, ifd.ifi_obytes), over: dt)
+                }
+                lastNet[name] = (ifd.ifi_ibytes, ifd.ifi_obytes)
+                list.append(row)
+            }
+            freeifaddrs(head)
+        }
+        list.sort { $0.id < $1.id }
+        interfaces = list
+        let all = ("all", list.reduce(0) { $0 + $1.rx }, list.reduce(0) { $0 + $1.tx })
+        for (id, rx, tx) in list.map({ ($0.id, $0.rx, $0.tx) }) + [all] {
+            var r = netRx[id] ?? [Double](repeating: 0, count: Self.samples), t = netTx[id] ?? r
+            push(&r, rx); push(&t, tx); netRx[id] = r; netTx[id] = t
+        }
+        for id in netRx.keys where id != "all" && !list.contains(where: { $0.id == id }) { netRx[id] = nil; netTx[id] = nil }
+    }
+
+    private func diskTotals() -> (r: UInt64, w: UInt64)? {
+        var it: io_iterator_t = 0
+        guard IOServiceGetMatchingServices(kIOMainPortDefault, IOServiceMatching("IOBlockStorageDriver"), &it) == KERN_SUCCESS else { return nil }
+        defer { IOObjectRelease(it) }
+        var r: UInt64 = 0, w: UInt64 = 0, found = false
+        var service = IOIteratorNext(it)
+        while service != 0 {
+            defer { IOObjectRelease(service); service = IOIteratorNext(it) }
+            guard let st = IORegistryEntryCreateCFProperty(service, "Statistics" as CFString, kCFAllocatorDefault, 0)?.takeRetainedValue() as? [String: Any] else { continue }
+            r += (st["Bytes (Read)"] as? NSNumber)?.uint64Value ?? 0
+            w += (st["Bytes (Write)"] as? NSNumber)?.uint64Value ?? 0
+            found = true
+        }
+        return found ? (r, w) : nil
     }
 
     /// Reads utilisation from the IOAccelerator registry entry (Apple silicon and Intel/AMD).
@@ -149,6 +264,7 @@ final class Monitor: ObservableObject {
         var pids = [Int32](repeating: 0, count: Int(proc_listallpids(nil, 0)) + 64)
         let n = Int(proc_listallpids(&pids, Int32(pids.count * MemoryLayout<Int32>.size)))
         var ns: [Int32: UInt64] = [:]
+        var diskBytes: [Int32: UInt64] = [:]
         var out: [Proc] = []
         var nameBuf = [CChar](repeating: 0, count: 256)
 
@@ -164,12 +280,29 @@ final class Monitor: ObservableObject {
             let cpuNs = abs * UInt64(timebase.numer) / UInt64(timebase.denom)
             ns[pid] = cpuNs
             let cpu = lastProcNs[pid].map { cpuNs >= $0 ? Double(cpuNs - $0) / wall * 100 / Double(cores) : 0 } ?? 0
+            var ri = rusage_info_v4()
+            let rok = withUnsafeMutablePointer(to: &ri) { p in
+                p.withMemoryRebound(to: rusage_info_t?.self, capacity: 1) { proc_pid_rusage(pid, RUSAGE_INFO_V4, $0) }
+            } == 0
+            let io = rok ? ri.ri_diskio_bytesread + ri.ri_diskio_byteswritten : 0
+            diskBytes[pid] = io
+            let diskRate = lastProcDisk[pid].map { io >= $0 ? Double(io - $0) / (wall / 1e9) : 0 } ?? 0
             let name = apps[pid]?.localizedName ?? (proc_name(pid, &nameBuf, 256) > 0 ? String(cString: nameBuf) : "pid \(pid)")
-            out.append(Proc(id: pid, name: name, isApp: apps[pid] != nil, cpu: cpu, mem: ti.pti_resident_size, started: started, icon: apps[pid]?.icon))
+            out.append(Proc(id: pid, name: name, isApp: apps[pid] != nil, cpu: cpu, mem: ti.pti_resident_size, started: started, icon: apps[pid]?.icon,
+                            ppid: Int32(bitPattern: bsd.pbi_ppid), user: userName(bsd.pbi_uid), threads: ti.pti_threadnum,
+                            state: Rates.stateName(bsd.pbi_status), disk: diskRate))
         }
         lastProcNs = ns
+        lastProcDisk = diskBytes
         pidTotal = max(n, 0)
         pidReadable = out.count
         return out
+    }
+
+    private func userName(_ uid: uid_t) -> String {
+        if let n = userNames[uid] { return n }
+        let n = getpwuid(uid).map { String(cString: $0.pointee.pw_name) } ?? String(uid)
+        userNames[uid] = n
+        return n
     }
 }

@@ -4,7 +4,7 @@
 Please use GitHub's **private vulnerability reporting** (Security tab → *Report a vulnerability*) rather than a public issue. You'll get a reply within a few days.
 
 ## What the app does
-- Reads process, CPU, memory, GPU, battery and disk information through `libproc`, `sysctl`, Mach host statistics and IOKit. It needs no special macOS permission: no Full Disk Access, Accessibility or Screen Recording.
+- Reads process, CPU, memory, GPU, battery, disk and network information through `libproc` (including `proc_pid_rusage` for per-process disk I/O), `sysctl`, Mach host statistics, `getifaddrs` interface counters and IOKit. The process details panel also lists a process's open TCP/UDP socket ports (local and remote port numbers only, never addresses) and checks its code signature with the Security framework; it never reads file contents. It needs no special macOS permission: no Full Disk Access, Accessibility or Screen Recording.
 - Only sees processes owned by your user; macOS hides other users' and system processes from unprivileged apps.
 - **End Task** sends `SIGTERM` after a confirmation, and only to the process that was listed (it re-checks the process start time, so a recycled pid is never signalled).
 - Never collects or shows your hostname or serial number.

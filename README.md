@@ -4,8 +4,9 @@
 
 # Task Manager
 
-**A fast, native task manager for macOS.** Live CPU, memory and GPU graphs, a sortable process list with End Task, system information, and an OLED Black theme.
+**A fast, native task manager for macOS.** Live CPU, memory, GPU, disk and network graphs, a sortable process list with details and End Task, system information, and light, dark and OLED Black themes.
 
+[![CI](https://github.com/Ol775/macos-task-manager/actions/workflows/ci.yml/badge.svg)](https://github.com/Ol775/macos-task-manager/actions/workflows/ci.yml)
 ![License: MIT](https://img.shields.io/badge/license-MIT-blue)
 ![macOS 15+](https://img.shields.io/badge/macOS-15%2B-black)
 ![Swift 6](https://img.shields.io/badge/Swift-6-orange)
@@ -19,19 +20,24 @@
 
 | | |
 |---|---|
-| **Processes** | Apps and all processes with CPU, memory and PID, sortable by any column, searchable, with a confirmed **End Task** (also on right-click). |
-| **Performance** | Live 60-second graphs for **CPU**, **Memory** and **GPU**, with performance/efficiency cores, wired and compressed memory, GPU memory and thermal state. |
+| **Processes** | Apps and all processes, sortable and searchable, with a **column picker** (CPU, Memory, Disk, PID, User, Threads, State, Started) and a confirmed **End Task**. |
+| **Process details** | Double-click a process for its path (with Reveal in Finder), parent, open files, code-signature status and open TCP/UDP ports. |
+| **Performance** | Live 60-second graphs for **CPU**, **Memory**, **GPU**, **Disk** (read / write) and **Network** (send / receive, per interface), with core layout, wired and compressed memory, GPU memory and thermal state. |
 | **System** | Model, chip, core layout, memory, graphics, macOS version and build, up time, thermal state, storage and battery. |
-| **Personalise** | System / Light / Dark / **OLED Black** appearance, per-graph colours, update speed from 0.5 s to 5 s. |
+| **Personalise** | System / Light / Dark / **OLED Black** appearance, accent colour, card corners, per-graph colours, update speed from 0.5 s to 5 s. |
 | **Permissions check** | Settings → Permissions shows exactly what the app can see and why some system processes are hidden. |
 | **Signed updates** | Checks GitHub releases and installs only Ed25519-signed builds. See [SECURITY.md](SECURITY.md). |
 
 <p align="center">
+  <img src="docs/details.png" width="49%" alt="Process details">
   <img src="docs/cpu.png" width="49%" alt="CPU">
-  <img src="docs/system.png" width="49%" alt="System">
 </p>
 <p align="center">
-  <img src="docs/gpu.png" width="49%" alt="GPU">
+  <img src="docs/disk.png" width="49%" alt="Disk">
+  <img src="docs/network.png" width="49%" alt="Network">
+</p>
+<p align="center">
+  <img src="docs/light.png" width="49%" alt="Light theme">
   <img src="docs/oled.png" width="49%" alt="OLED Black theme">
 </p>
 
@@ -54,7 +60,7 @@ Requires Xcode 16+ (the Swift 6 toolchain):
 git clone https://github.com/Ol775/macos-task-manager.git
 cd macos-task-manager
 ./build-app.sh && open TaskManager.app
-TaskManager.app/Contents/MacOS/TaskManager --selftest   # updater/signature checks
+TaskManager.app/Contents/MacOS/TaskManager --selftest   # updater, sampling and contrast checks
 ```
 
 ## Privacy
@@ -67,7 +73,7 @@ macOS only lets an unprivileged app inspect processes owned by the same user, so
 
 ## Roadmap
 
-Disk and Network pages, more process columns, a menu bar mode and alerts are next. See [ROADMAP.md](ROADMAP.md).
+A menu bar mode, alerts and a per-core CPU view are next. See [ROADMAP.md](ROADMAP.md).
 
 ## Releasing
 
